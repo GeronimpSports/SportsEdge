@@ -1,0 +1,116 @@
+name: nfl-v2k-reference-v2-activation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/nfl-v2k-reference-v2-activation.yml'
+      - 'scripts/build_nfl_v2k_reference_v2_activation.py'
+      - 'scripts/build_nfl_v2k_reference_v2_proposal.py'
+      - 'sportsedge/sports/nfl/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V2_PROPOSAL.json'
+      - 'sportsedge/sports/nfl/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V2.json'
+      - 'sportsedge/sports/nfl/NFL_V2K_IMPLEMENTATION_ADMISSION_V2.json'
+      - 'sportsedge/sports/nfl/NFL_V2K_CLEAN_PREREG_2026-09-13.md'
+      - 'sportsedge/sports/nfl/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1.json'
+      - 'sportsedge/sports/nfl/NFL_V2K_ATTEMPT_LEDGER_V1.json'
+      - 'tests/test_nfl_v2k_reference_v2_activation.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  reproduce-versioned-activation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Download and verify frozen evidence artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: '10319922606'
+          EXPECTED_ARTIFACT_SHA256: 'e53f16804c74ec197b23dd17180ad88d1c696d4a93e593ecc17fa8ccf480a437'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/nfl-v2k-evidence
+          curl --fail-with-body --location \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
+            --output /tmp/nfl-v2k-evidence.zip
+          printf '%s  %s\n' "${EXPECTED_ARTIFACT_SHA256}" /tmp/nfl-v2k-evidence.zip | sha256sum --check --strict
+          unzip -q /tmp/nfl-v2k-evidence.zip -d /tmp/nfl-v2k-evidence
+      - name: Verify human approval provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_ID: '5654266444'
+          APPROVAL_PR: '587'
+          APPROVAL_USER: 'isaacrome21-sys'
+          EXPECTED_COMMENT_BODY_SHA256: 'eaca7bdc5b71f4b08b3ab6a54acda9d292d1f1443d21f3499a5e43b528a95ead'
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --location \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
+            --output /tmp/v2k-human-approval.json
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          data = json.loads(Path('/tmp/v2k-human-approval.json').read_text(encoding='utf-8'))
+          expected_id = int(os.environ['COMMENT_ID'])
+          expected_pr = os.environ['APPROVAL_PR']
+          expected_user = os.environ['APPROVAL_USER']
+          expected_sha = os.environ['EXPECTED_COMMENT_BODY_SHA256']
+          if data.get('id') != expected_id:
+              raise SystemExit('HUMAN_APPROVAL_COMMENT_ID_MISMATCH')
+          if str(data.get('issue_url') or '').rstrip('/').split('/')[-1] != expected_pr:
+              raise SystemExit('HUMAN_APPROVAL_PR_MISMATCH')
+          if ((data.get('user') or {}).get('login')) != expected_user:
+              raise SystemExit('HUMAN_APPROVAL_USER_MISMATCH')
+          body = str(data.get('body') or '')
+          actual_sha = hashlib.sha256(body.encode('utf-8')).hexdigest()
+          if actual_sha != expected_sha:
+              raise SystemExit(f'HUMAN_APPROVAL_BODY_SHA256_MISMATCH:{actual_sha}')
+          print(json.dumps({'approval_comment_id': expected_id, 'approval_pr': expected_pr, 'approval_body_sha256': actual_sha}, sort_keys=True))
+          PY
+      - name: Rebuild and verify report-only proposal from frozen evidence
+        run: |
+          set -euo pipefail
+          python scripts/build_nfl_v2k_reference_v2_proposal.py \
+            --template sportsedge/sports/nfl/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V2_PROPOSAL.json \
+            --games /tmp/nfl-v2k-evidence/sources/games.csv \
+            --manifest /tmp/nfl-v2k-evidence/nfl_source_manifest.json \
+            --production-validation /tmp/nfl-v2k-evidence/nfl_production_validation.json \
+            --promotion-registry /tmp/nfl-v2k-evidence/nfl_promotion_registry.json \
+            --output /tmp/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V2_PROPOSAL.rebuilt.json
+          cmp --silent \
+            sportsedge/sports/nfl/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V2_PROPOSAL.json \
+            /tmp/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V2_PROPOSAL.rebuilt.json
+      - name: Rebuild approved reference and research-only admission
+        run: |
+          set -euo pipefail
+          python scripts/build_nfl_v2k_reference_v2_activation.py \
+            --proposal sportsedge/sports/nfl/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V2_PROPOSAL.json \
+            --prereg sportsedge/sports/nfl/NFL_V2K_CLEAN_PREREG_2026-09-13.md \
+            --v1-reference sportsedge/sports/nfl/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1.json \
+            --ledger sportsedge/sports/nfl/NFL_V2K_ATTEMPT_LEDGER_V1.json \
+            --reference-output /tmp/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V2.json \
+            --admission-output /tmp/NFL_V2K_IMPLEMENTATION_ADMISSION_V2.json
+          cmp --silent \
+            sportsedge/sports/nfl/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V2.json \
+            /tmp/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V2.json
+          cmp --silent \
+            sportsedge/sports/nfl/NFL_V2K_IMPLEMENTATION_ADMISSION_V2.json \
+            /tmp/NFL_V2K_IMPLEMENTATION_ADMISSION_V2.json
+      - name: Enforce activation authority and immutable V1 boundaries
+        run: PYTHONPATH=. python tests/test_nfl_v2k_reference_v2_activation.py
