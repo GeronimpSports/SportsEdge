@@ -18,6 +18,30 @@ class NFLPromotionRegistryTests(unittest.TestCase):
             "max_allowed_abs_error": 0.005,
         }
 
+    def _calibration(self, calibration_pass=True):
+        if calibration_pass:
+            rows = [(50, 0.20, 0.20), (50, 0.40, 0.40), (50, 0.60, 0.60), (50, 0.80, 0.80)]
+            maximum = 0.03
+        else:
+            rows = [(50, 0.20, 0.30), (50, 0.40, 0.45), (50, 0.60, 0.55), (50, 0.80, 0.70)]
+            maximum = 0.09
+        return {
+            "pass": calibration_pass,
+            "max_bin_deviation": maximum,
+            "threshold": 0.05,
+            "n": sum(n for n, _, _ in rows),
+            "bins": [
+                {
+                    "bin": i,
+                    "n": n,
+                    "mean_probability": probability,
+                    "empirical_rate": empirical,
+                    "abs_deviation": abs(empirical - probability),
+                }
+                for i, (n, probability, empirical) in enumerate(rows)
+            ],
+        }
+
     def _history(self, spread_wins=7, spread_total=10, calibration_pass=True):
         return {
             "provenance": "REAL_PUBLIC_HISTORY",
@@ -31,17 +55,13 @@ class NFLPromotionRegistryTests(unittest.TestCase):
                     "fold_wins": spread_wins,
                     "fold_total": spread_total,
                     "fold_win_rate": spread_wins / spread_total,
-                    "calibration": {
-                        "pass": calibration_pass,
-                        "max_bin_deviation": 0.03 if calibration_pass else 0.09,
-                        "threshold": 0.05,
-                    },
+                    "calibration": self._calibration(calibration_pass),
                 },
                 "total": {
                     "fold_wins": 4,
                     "fold_total": 10,
                     "fold_win_rate": 0.4,
-                    "calibration": {"pass": True, "max_bin_deviation": 0.02, "threshold": 0.05},
+                    "calibration": self._calibration(True),
                 },
             },
         }
@@ -116,11 +136,54 @@ class NFLPromotionRegistryTests(unittest.TestCase):
             ci_attested=True, ci_attestation=self._ci(),
         )
         self.assertEqual(with_ci["markets"]["spread"]["stage"], "CI_ATTESTED")
+        self.assertTrue(with_ci["markets"]["spread"]["calibration_truth_gate"]["pass"])
         bad_cal = build_nfl_promotion_registry(
             self._math(), self._history(calibration_pass=False), declared_markets=["spread"],
             ci_attested=True, ci_attestation=self._ci(),
         )
         self.assertEqual(bad_cal["markets"]["spread"]["stage"], "PRODUCTION_LOGIC_PASS")
+
+    def test_legacy_max_bin_pass_cannot_bypass_strict_slope_gate(self):
+        history = self._history()
+        cal = history["promotion_evidence"]["spread"]["calibration"]
+        cal.update({
+            "pass": True,
+            "max_bin_deviation": 0.02,
+            "threshold": 0.05,
+            "n": 200,
+            "bins": [
+                {"bin": 0, "n": 50, "mean_probability": 0.20, "empirical_rate": 0.30, "abs_deviation": 0.10},
+                {"bin": 1, "n": 50, "mean_probability": 0.40, "empirical_rate": 0.45, "abs_deviation": 0.05},
+                {"bin": 2, "n": 50, "mean_probability": 0.60, "empirical_rate": 0.55, "abs_deviation": 0.05},
+                {"bin": 3, "n": 50, "mean_probability": 0.80, "empirical_rate": 0.70, "abs_deviation": 0.10},
+            ],
+        })
+        registry = build_nfl_promotion_registry(
+            self._math(), history, declared_markets=["spread"],
+            ci_attested=True, ci_attestation=self._ci(),
+        )
+        row = registry["markets"]["spread"]
+        self.assertEqual(row["stage"], "PRODUCTION_LOGIC_PASS")
+        self.assertFalse(row["calibration_truth_gate"]["pass"])
+        self.assertIn("CALIBRATION_SLOPE_OUT_OF_RANGE", row["reason"])
+
+    def test_underpowered_strict_calibration_blocks_even_when_legacy_passes(self):
+        history = self._history()
+        cal = history["promotion_evidence"]["spread"]["calibration"]
+        cal["n"] = 160
+        cal["bins"] = [
+            {"bin": 0, "n": 40, "mean_probability": 0.20, "empirical_rate": 0.20, "abs_deviation": 0.0},
+            {"bin": 1, "n": 40, "mean_probability": 0.40, "empirical_rate": 0.40, "abs_deviation": 0.0},
+            {"bin": 2, "n": 40, "mean_probability": 0.60, "empirical_rate": 0.60, "abs_deviation": 0.0},
+            {"bin": 3, "n": 40, "mean_probability": 0.80, "empirical_rate": 0.80, "abs_deviation": 0.0},
+        ]
+        registry = build_nfl_promotion_registry(
+            self._math(), history, declared_markets=["spread"],
+            ci_attested=True, ci_attestation=self._ci(),
+        )
+        row = registry["markets"]["spread"]
+        self.assertEqual(row["stage"], "PRODUCTION_LOGIC_PASS")
+        self.assertEqual(row["calibration_truth_gate"]["reason"], "CALIBRATION_SAMPLE_BELOW_MINIMUM")
 
     def test_deployment_requires_real_clv_sample_gate(self):
         base = build_nfl_promotion_registry(
