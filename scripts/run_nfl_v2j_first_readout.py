@@ -12,6 +12,7 @@ from sportsedge.sports.nfl.m2_history_features import fit_nfl_prior_decay_curves
 from sportsedge.sports.nfl.m2_history_policy import build_nfl_m2_history_rows
 from sportsedge.sports.nfl.m2_v2h_candidate import build_nfl_v2h_game_event_rows
 from sportsedge.sports.nfl.m2_v2j_validation import build_nfl_m2_v2j_candidate_evidence
+from scripts.build_nfl_v2g_source_bound_artifact import _identity_scoped_pbp, _normalize_schedule_team_aliases
 from scripts.run_nfl_production_validation import (
     _PBP_FIELDS, _PARTICIPATION_FIELDS, _DEPTH_FIELDS, _STADIUM_FIELDS,
     _files, _extend, _read_projected, bridge_preopening_away_origins,
@@ -50,7 +51,10 @@ def main() -> int:
     exclusions={}
     history_rows = build_nfl_m2_history_rows(schedule,pbp,participation,depth,stadiums,prior_decay_curves=prior_curves,neutral_site_policy='exclude_from_evaluation',exclusion_report=exclusions)
     if not history_rows: raise SystemExit('NFL_V2J_HISTORY_ROWS_EMPTY')
-    event_rows = build_nfl_v2h_game_event_rows(schedule, scoring_pbp)
+
+    scoring_schedule, alias_applications = _normalize_schedule_team_aliases([dict(row) for row in schedule])
+    scoring_pbp, ignored_unscoped = _identity_scoped_pbp(scoring_pbp)
+    event_rows = build_nfl_v2h_game_event_rows(scoring_schedule, scoring_pbp)
     eligible_ids = {str(r.get('game_id') or '') for r in history_rows}
     event_rows = [r for r in event_rows if str(r.get('game_id') or '') in eligible_ids]
     evidence = build_nfl_m2_v2j_candidate_evidence(event_rows, history_rows, source_manifest_sha256=manifest_hash)
@@ -59,7 +63,9 @@ def main() -> int:
         'point_in_time_history_row_count':len(history_rows),'event_row_count':len(event_rows),
         'market_prices_consumed_as_model_features':False,'prospective_outcomes_consumed_for_tuning':False,
         'v2h_or_v2i_readout_values_consumed_for_numeric_tuning':False,'starter_override_count':len(applied),
-        'stadium_bridge_count':len(bridges),'environment_exclusions_by_season':{str(k):v for k,v in exclusions.items()},'nfl_props':'NO_ENGINE'
+        'stadium_bridge_count':len(bridges),'scoring_team_alias_application_count':len(alias_applications),
+        'ignored_unscoped_scoring_pbp_row_count':ignored_unscoped,
+        'environment_exclusions_by_season':{str(k):v for k,v in exclusions.items()},'nfl_props':'NO_ENGINE'
     })
     args.out.parent.mkdir(parents=True,exist_ok=True); args.out.write_text(json.dumps(evidence,indent=2,sort_keys=True)+'\n',encoding='utf-8')
     print(json.dumps({'status':evidence['status'],'model_id':evidence['model_id'],'historical':evidence['candidate_historical_evidence'],'signed_key_probability':evidence['candidate_distribution_profile']['signed_key_probability'],'source_manifest_sha256':manifest_hash,'promotion_authority':False},sort_keys=True))
