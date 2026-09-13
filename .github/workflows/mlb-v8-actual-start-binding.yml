@@ -52,6 +52,36 @@ jobs:
         run: python scripts/attest_mlb_v8_actual_starts.py
       - name: Build actual-start-bound historical pairs
         run: python scripts/build_mlb_v8_oddspapi_pit_v2.py
+      - name: Require non-empty attested paired-close evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('artifacts/mlb_v8_replay_sources/ODDSPAPI_HISTORICAL')
+          att_dir = root / 'actual_starts'
+          attestations = sorted(att_dir.glob('*.json')) if att_dir.is_dir() else []
+          summary_path = Path('artifacts/mlb_v8_replay_archive/oddspapi_pit_v2/summary.json')
+          if not summary_path.is_file():
+              raise SystemExit('BLOCKED_NO_V2_PIT_SUMMARY')
+          summary = json.loads(summary_path.read_text(encoding='utf-8'))
+          counts = summary.get('counts') or {}
+          paired_closes = int(counts.get('actual_start_bound_paired_closes') or 0)
+          t30_pairs = int(counts.get('actual_start_bound_t30_pairs') or 0)
+          print(json.dumps({
+              'actual_start_attestations': len(attestations),
+              'actual_start_bound_t30_pairs': t30_pairs,
+              'actual_start_bound_paired_closes': paired_closes,
+              'promotion_authority': False,
+          }, sort_keys=True))
+          if not attestations:
+              raise SystemExit('BLOCKED_ZERO_ACTUAL_START_ATTESTATIONS')
+          if t30_pairs <= 0:
+              raise SystemExit('BLOCKED_ZERO_ACTUAL_START_BOUND_T30_PAIRS')
+          if paired_closes <= 0:
+              raise SystemExit('BLOCKED_ZERO_ACTUAL_START_BOUND_PAIRED_CLOSES')
+          PY
       - name: Persist append-only provenance products
         run: |
           set -euo pipefail
