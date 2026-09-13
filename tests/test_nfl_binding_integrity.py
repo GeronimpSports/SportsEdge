@@ -2,24 +2,21 @@ from __future__ import annotations
 
 import unittest
 
-from sportsedge.sports.nfl.run_machine import NFLRunMachineError, _event_quotes
+from sportsedge.sports.nfl.readiness import (
+    NFLReadinessError,
+    _validate_bettor_facing_odds_snapshot,
+)
 
 
 HOME = "Chicago Bears"
 AWAY = "Green Bay Packers"
 
 
-def _game() -> dict:
-    return {
-        "home_team": "CHI",
-        "away_team": "GB",
-        "provider_home_team": HOME,
-        "provider_away_team": AWAY,
-    }
-
-
 def _event() -> dict:
     return {
+        "id": "provider-event-1",
+        "home_team": HOME,
+        "away_team": AWAY,
         "bookmakers": [{
             "key": "draftkings",
             "title": "DraftKings",
@@ -41,52 +38,76 @@ def _event() -> dict:
     }
 
 
+def _snapshot() -> dict:
+    return {
+        "source": "fixture",
+        "observed_at": "2026-09-10T11:59:00+00:00",
+        "events": [_event()],
+    }
+
+
 def _market(event: dict, key: str) -> dict:
     return next(row for row in event["bookmakers"][0]["markets"] if row["key"] == key)
 
 
+def _validate(snapshot: dict) -> None:
+    _validate_bettor_facing_odds_snapshot(snapshot, book_key="draftkings")
+
+
 class NFLBindingIntegrityTests(unittest.TestCase):
-    def test_valid_exact_pairs_still_produce_six_quotes(self):
-        quotes, book = _event_quotes(_game(), _event(), book_key="draftkings")
-        self.assertEqual(book, "DraftKings")
-        self.assertEqual(len(quotes), 6)
-        self.assertEqual({row["market"] for row in quotes}, {"MONEYLINE", "SPREAD", "TOTAL"})
+    def test_valid_exact_pairs_pass_readiness_guard(self):
+        snapshot = _snapshot()
+        self.assertIs(_validate_bettor_facing_odds_snapshot(snapshot, book_key="draftkings"), snapshot)
 
     def test_duplicate_moneyline_home_fails_before_binding(self):
-        event = _event()
-        _market(event, "h2h")["outcomes"].append({"name": HOME, "price": -130})
-        with self.assertRaisesRegex(NFLRunMachineError, "NFL_MONEYLINE_OUTCOME_COUNT_INVALID"):
-            _event_quotes(_game(), event, book_key="draftkings")
+        snapshot = _snapshot()
+        _market(snapshot["events"][0], "h2h")["outcomes"].append({"name": HOME, "price": -130})
+        with self.assertRaisesRegex(NFLReadinessError, "NFL_BINDING_OUTCOME_COUNT_INVALID:h2h"):
+            _validate(snapshot)
 
     def test_duplicate_spread_away_fails_before_binding(self):
-        event = _event()
-        _market(event, "spreads")["outcomes"].append({"name": AWAY, "point": 2.5, "price": -115})
-        with self.assertRaisesRegex(NFLRunMachineError, "NFL_SPREAD_OUTCOME_COUNT_INVALID"):
-            _event_quotes(_game(), event, book_key="draftkings")
+        snapshot = _snapshot()
+        _market(snapshot["events"][0], "spreads")["outcomes"].append({"name": AWAY, "point": 2.5, "price": -115})
+        with self.assertRaisesRegex(NFLReadinessError, "NFL_BINDING_OUTCOME_COUNT_INVALID:spreads"):
+            _validate(snapshot)
 
     def test_duplicate_total_over_fails_before_binding(self):
-        event = _event()
-        _market(event, "totals")["outcomes"].append({"name": "Over", "point": 44.5, "price": -105})
-        with self.assertRaisesRegex(NFLRunMachineError, "NFL_TOTAL_OUTCOME_COUNT_INVALID"):
-            _event_quotes(_game(), event, book_key="draftkings")
+        snapshot = _snapshot()
+        _market(snapshot["events"][0], "totals")["outcomes"].append({"name": "Over", "point": 44.5, "price": -105})
+        with self.assertRaisesRegex(NFLReadinessError, "NFL_BINDING_OUTCOME_COUNT_INVALID:totals"):
+            _validate(snapshot)
 
     def test_unexpected_moneyline_selection_fails_closed(self):
-        event = _event()
-        _market(event, "h2h")["outcomes"][1] = {"name": "Tie", "price": 2500}
-        with self.assertRaisesRegex(NFLRunMachineError, "NFL_MONEYLINE_OUTCOME_UNEXPECTED:Tie"):
-            _event_quotes(_game(), event, book_key="draftkings")
+        snapshot = _snapshot()
+        _market(snapshot["events"][0], "h2h")["outcomes"][1] = {"name": "Tie", "price": 2500}
+        with self.assertRaisesRegex(NFLReadinessError, "NFL_BINDING_OUTCOME_PAIR_MISMATCH:h2h"):
+            _validate(snapshot)
 
     def test_unexpected_total_selection_fails_closed(self):
-        event = _event()
-        _market(event, "totals")["outcomes"][1] = {"name": "Exact", "point": 44.5, "price": 500}
-        with self.assertRaisesRegex(NFLRunMachineError, "NFL_TOTAL_OUTCOME_UNEXPECTED:Exact"):
-            _event_quotes(_game(), event, book_key="draftkings")
+        snapshot = _snapshot()
+        _market(snapshot["events"][0], "totals")["outcomes"][1] = {"name": "Exact", "point": 44.5, "price": 500}
+        with self.assertRaisesRegex(NFLReadinessError, "NFL_BINDING_OUTCOME_PAIR_MISMATCH:totals"):
+            _validate(snapshot)
 
     def test_missing_pair_member_fails_closed(self):
-        event = _event()
-        _market(event, "spreads")["outcomes"] = [_market(event, "spreads")["outcomes"][0]]
-        with self.assertRaisesRegex(NFLRunMachineError, "NFL_SPREAD_OUTCOME_COUNT_INVALID"):
-            _event_quotes(_game(), event, book_key="draftkings")
+        snapshot = _snapshot()
+        _market(snapshot["events"][0], "spreads")["outcomes"] = [_market(snapshot["events"][0], "spreads")["outcomes"][0]]
+        with self.assertRaisesRegex(NFLReadinessError, "NFL_BINDING_OUTCOME_COUNT_INVALID:spreads"):
+            _validate(snapshot)
+
+    def test_duplicate_selected_book_fails_closed(self):
+        snapshot = _snapshot()
+        snapshot["events"][0]["bookmakers"].append(snapshot["events"][0]["bookmakers"][0].copy())
+        with self.assertRaisesRegex(NFLReadinessError, "NFL_BINDING_BOOKMAKER_COUNT_INVALID:draftkings"):
+            _validate(snapshot)
+
+    def test_duplicate_market_block_fails_closed(self):
+        snapshot = _snapshot()
+        snapshot["events"][0]["bookmakers"][0]["markets"].append(
+            dict(_market(snapshot["events"][0], "totals"))
+        )
+        with self.assertRaisesRegex(NFLReadinessError, "NFL_BINDING_MARKET_COUNT_INVALID:totals"):
+            _validate(snapshot)
 
 
 if __name__ == "__main__":
