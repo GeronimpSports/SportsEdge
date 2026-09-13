@@ -13,6 +13,7 @@ from pathlib import Path
 UTC = timezone.utc
 SPORT_KEY = "baseball_mlb"
 SCHEMA = "CLOSING_LINE_START_ATTESTATION_V1"
+START_GUARD = "ACTUAL_START_VERIFIED"
 
 
 def _get(url: str) -> bytes:
@@ -92,6 +93,7 @@ def _attest(event_id: str, row: dict, game_pk: int) -> dict | None:
         "event_id": event_id,
         "actual_first_play_utc": _iso(_parse(start)),
         "observed_at_utc": _iso(datetime.now(UTC)),
+        "start_guard": START_GUARD,
         "source": "MLB_STATSAPI_GAME_FEED",
         "source_event_id": str(game_pk),
         "source_sha256": hashlib.sha256(raw).hexdigest(),
@@ -120,7 +122,14 @@ def run(root: Path, lookback_days: int = 3) -> dict:
         with target.open("a") as f:
             f.write(json.dumps(att, sort_keys=True) + "\n")
         written += 1
-    return {"status": "OK", "events_seen": len(events), "attestations_written": written, "identity_blocked": blocked, "promotion_authority": False}
+    return {
+        "status": "OK",
+        "events_seen": len(events),
+        "attestations_written": written,
+        "identity_blocked": blocked,
+        "start_guard": START_GUARD,
+        "promotion_authority": False,
+    }
 
 
 def main(argv=None):

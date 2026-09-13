@@ -1,8 +1,9 @@
 CLOSING_LINE_ARCHIVE_V2 supersedes V1 for new capture.
 Provider commence_time is only a scheduling hint.
-close owns scheduled lead 2-20 minutes.
-t0_candidate owns scheduled lead -30 to less than 2 minutes, including scheduled T-0.
+A single provider fetch may belong to multiple archive windows; each emitted window row shares the same capture_id and fetch_sha256 so downstream coverage/close selection can deduplicate the observation by construction.
+Every scheduled-guard price row carries start_guard=SCHEDULED_COMMENCE_ONLY plus both known guard failure modes: an actual start earlier than scheduled can admit a post-start quote, while an actual start later than scheduled can make the lane stop capturing before the real close.
 Every price row remains NOT_EVIDENCE and UNADJUDICATED until a separate append-only actual-start attestation exists.
-MLB actual-start attestations use the first play timestamp from the official MLB StatsAPI feed and exact source SHA-256.
+MLB actual-start attestations use the first play timestamp from the official MLB StatsAPI feed, exact source SHA-256, and start_guard=ACTUAL_START_VERIFIED.
+The current policy file is not changed by this schema fix; its configured memberships remain authoritative. The producer is multi-membership-safe if an approved policy version later contains overlapping windows.
 Neither price rows nor start attestations create Model_P, eligibility, Truth Gate PASS, edge floors, staking, promotion, or OFFICIAL authority.
 Historical V1 rows are never rewritten.

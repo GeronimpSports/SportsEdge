@@ -9,8 +9,20 @@ from scripts import attest_mlb_closing_line_starts as mod
 
 class StartAttestationTests(unittest.TestCase):
     def test_attestation_is_non_promoting_and_source_bound(self):
-        row = {"home_team": "Chicago Cubs", "away_team": "Milwaukee Brewers", "commence_time": "2026-09-12T18:20:00Z"}
-        feed = {"liveData": {"plays": {"allPlays": [{"about": {"startTime": "2026-09-12T18:27:41Z"}}]}}}
+        row = {
+            "home_team": "Chicago Cubs",
+            "away_team": "Milwaukee Brewers",
+            "commence_time": "2026-09-12T18:20:00Z",
+        }
+        feed = {
+            "liveData": {
+                "plays": {
+                    "allPlays": [
+                        {"about": {"startTime": "2026-09-12T18:27:41Z"}}
+                    ]
+                }
+            }
+        }
         raw = json.dumps(feed).encode()
         with patch.object(mod, "_get", return_value=raw):
             att = mod._attest("provider-event", row, 12345)
@@ -20,6 +32,7 @@ class StartAttestationTests(unittest.TestCase):
         self.assertEqual(att["evidence_class"], "NOT_EVIDENCE_ADJUDICATION_ONLY")
         self.assertFalse(att["promotion_authority"])
         self.assertFalse(att["retroactive_point_in_time_claim"])
+        self.assertEqual(att["start_guard"], "ACTUAL_START_VERIFIED")
         self.assertEqual(len(att["source_sha256"]), 64)
 
     def test_existing_attestation_prevents_duplicate_append(self):
