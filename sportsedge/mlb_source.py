@@ -1,8 +1,13 @@
 from __future__ import annotations
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
+import hashlib
 import json
-from typing import Any, Callable
+from pathlib import Path
+import re
+from typing import Any, Callable, Iterator
 from urllib.request import urlopen
 from zoneinfo import ZoneInfo
 
@@ -39,10 +44,111 @@ class GameSnapshot:
     detailed_status: str | None = None
 
 
+@dataclass(frozen=True)
+class MLBSourceCaptureRecord:
+    sequence: int
+    source_kind: str
+    url: str
+    observed_at_utc: str
+    sha256: str
+    path: str
+    byte_length: int
+    game_pk: int | None = None
+
+
+class MLBSourceCapture:
+    """Append-only recorder for the exact StatsAPI bytes consumed by inference.
+
+    Capture is opt-in. Existing callers behave identically when no capture context
+    is active. A recorder never refetches a source; it persists the bytes returned
+    by the same response object that is subsequently JSON-decoded by the model.
+    """
+
+    def __init__(self, root: Path, *, clock: Callable[[], datetime] | None = None):
+        self.root = Path(root)
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.records: list[MLBSourceCaptureRecord] = []
+
+    @staticmethod
+    def _identity(url: str) -> tuple[str, int | None]:
+        if "/api/v1/schedule" in url:
+            return "MLB_STATSAPI_SCHEDULE", None
+        match = re.search(r"/api/v1/game/(\d+)/boxscore(?:\?|$)", url)
+        if match:
+            return "MLB_STATSAPI_BOXSCORE", int(match.group(1))
+        return "MLB_STATSAPI_OTHER", None
+
+    def record(self, *, url: str, raw: bytes) -> MLBSourceCaptureRecord:
+        observed = self.clock()
+        if not isinstance(observed, datetime) or observed.tzinfo is None or observed.utcoffset() is None:
+            raise MLBSourceError("source capture clock must return timezone-aware datetime")
+        observed = observed.astimezone(timezone.utc)
+        source_kind, game_pk = self._identity(url)
+        digest = hashlib.sha256(raw).hexdigest()
+        sequence = len(self.records) + 1
+        suffix = f"game_{game_pk}" if game_pk is not None else source_kind.lower()
+        name = f"{sequence:04d}_{suffix}_{digest}.json"
+        destination = self.root / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists() and destination.read_bytes() != raw:
+            raise MLBSourceError("immutable raw source capture collision")
+        destination.write_bytes(raw)
+        record = MLBSourceCaptureRecord(
+            sequence=sequence,
+            source_kind=source_kind,
+            url=url,
+            observed_at_utc=observed.isoformat(),
+            sha256=digest,
+            path=str(destination),
+            byte_length=len(raw),
+            game_pk=game_pk,
+        )
+        self.records.append(record)
+        return record
+
+    def manifest(self) -> dict[str, Any]:
+        return {
+            "schema": "MLB_SAME_FETCH_PIT_SOURCE_CAPTURE_V1",
+            "capture_semantics": "SAME_RESPONSE_BYTES_CONSUMED_BY_MODEL",
+            "promotion_authority": False,
+            "retroactive_point_in_time_claim": False,
+            "records": [asdict(record) for record in self.records],
+        }
+
+
+_ACTIVE_SOURCE_CAPTURE: ContextVar[MLBSourceCapture | None] = ContextVar(
+    "sportsedge_mlb_source_capture", default=None
+)
+
+
+@contextmanager
+def capture_mlb_source_bytes(
+    root: str | Path,
+    *,
+    clock: Callable[[], datetime] | None = None,
+) -> Iterator[MLBSourceCapture]:
+    """Capture exact MLB source bytes used inside this context, without refetching."""
+    recorder = MLBSourceCapture(Path(root), clock=clock)
+    token = _ACTIVE_SOURCE_CAPTURE.set(recorder)
+    try:
+        yield recorder
+    finally:
+        _ACTIVE_SOURCE_CAPTURE.reset(token)
+
+
 def _get_json(url: str, opener: Callable = urlopen) -> dict[str, Any]:
     try:
         with opener(url, timeout=15) as r:
-            return json.loads(r.read().decode("utf-8"))
+            raw = r.read()
+        if not isinstance(raw, (bytes, bytearray)):
+            raise MLBSourceError("MLB response body must be bytes")
+        raw_bytes = bytes(raw)
+        recorder = _ACTIVE_SOURCE_CAPTURE.get()
+        if recorder is not None:
+            recorder.record(url=url, raw=raw_bytes)
+        return json.loads(raw_bytes.decode("utf-8"))
+    except MLBSourceError:
+        raise
     except Exception as exc:
         raise MLBSourceError(f"MLB fetch failed: {exc}") from exc
 
