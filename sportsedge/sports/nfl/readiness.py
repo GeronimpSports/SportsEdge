@@ -63,24 +63,14 @@ def _validate_registry(
     if registry.get("feature_contract") != NFL_M2_FEATURE_CONTRACT:
         raise NFLReadinessError("NFL_PROMOTION_REGISTRY_FEATURE_CONTRACT_MISMATCH")
 
-    registry_code = _git_sha(
-        registry.get("code_git_sha"), "NFL_PROMOTION_REGISTRY_CODE_GIT_SHA_INVALID"
-    )
+    registry_code = _git_sha(registry.get("code_git_sha"), "NFL_PROMOTION_REGISTRY_CODE_GIT_SHA_INVALID")
     runtime_code = _git_sha(runtime_code_git_sha, "NFL_RUNTIME_CODE_GIT_SHA_INVALID")
-    artifact_code = _git_sha(
-        artifact_payload.get("code_git_sha"), "NFL_MODEL_ARTIFACT_CODE_GIT_SHA_INVALID"
-    )
+    artifact_code = _git_sha(artifact_payload.get("code_git_sha"), "NFL_MODEL_ARTIFACT_CODE_GIT_SHA_INVALID")
     if {registry_code, runtime_code, artifact_code} != {runtime_code}:
         raise NFLReadinessError("NFL_PROMOTION_REGISTRY_CODE_BINDING_MISMATCH")
 
-    registry_source = _sha256(
-        registry.get("source_manifest_sha256"),
-        "NFL_PROMOTION_REGISTRY_SOURCE_MANIFEST_SHA256_INVALID",
-    )
-    artifact_source = _sha256(
-        artifact_payload.get("source_manifest_sha256"),
-        "NFL_MODEL_ARTIFACT_SOURCE_SHA256_INVALID",
-    )
+    registry_source = _sha256(registry.get("source_manifest_sha256"), "NFL_PROMOTION_REGISTRY_SOURCE_MANIFEST_SHA256_INVALID")
+    artifact_source = _sha256(artifact_payload.get("source_manifest_sha256"), "NFL_MODEL_ARTIFACT_SOURCE_SHA256_INVALID")
     if registry_source != artifact_source:
         raise NFLReadinessError("NFL_PROMOTION_REGISTRY_SOURCE_BINDING_MISMATCH")
 
@@ -110,102 +100,103 @@ def _floor_key(market: str) -> str:
     return f"NFL_{resolved}"
 
 
-def run_nfl_ready(
-    *,
-    promotion_registry: Mapping[str, Any],
-    floor_path: str | Path = "config/truth_gate_floors.json",
-    **kwargs: Any,
-) -> NFLMachineReport:
-    """Run canonical M2 and resolve real promotion/floor/price gates.
+def _validate_bettor_facing_odds_snapshot(payload: Mapping[str, Any], *, book_key: str) -> Mapping[str, Any]:
+    if not isinstance(payload, Mapping):
+        raise NFLReadinessError("NFL_BINDING_ODDS_SNAPSHOT_INVALID")
+    events = payload.get("events")
+    if not isinstance(events, list) or not events:
+        raise NFLReadinessError("NFL_BINDING_ODDS_EVENTS_INVALID")
+    clean_book = str(book_key or "").strip().lower()
+    if not clean_book:
+        raise NFLReadinessError("NFL_BINDING_BOOK_KEY_REQUIRED")
+    for event in events:
+        if not isinstance(event, Mapping):
+            raise NFLReadinessError("NFL_BINDING_EVENT_INVALID")
+        event_home = str(event.get("home_team") or "").strip()
+        event_away = str(event.get("away_team") or "").strip()
+        if not event_home or not event_away or event_home == event_away:
+            raise NFLReadinessError("NFL_BINDING_EVENT_TEAMS_INVALID")
+        books = event.get("bookmakers")
+        if not isinstance(books, list):
+            raise NFLReadinessError("NFL_BINDING_BOOKMAKERS_INVALID")
+        matching_books = [row for row in books if isinstance(row, Mapping) and str(row.get("key") or "").strip().lower() == clean_book]
+        if len(matching_books) != 1:
+            raise NFLReadinessError(f"NFL_BINDING_BOOKMAKER_COUNT_INVALID:{clean_book}")
+        markets = matching_books[0].get("markets")
+        if not isinstance(markets, list):
+            raise NFLReadinessError("NFL_BINDING_MARKETS_INVALID")
+        for market_key, expected_names in (("h2h", {event_home, event_away}), ("spreads", {event_home, event_away}), ("totals", {"over", "under"})):
+            matching_markets = [row for row in markets if isinstance(row, Mapping) and str(row.get("key") or "").strip().lower() == market_key]
+            if len(matching_markets) != 1:
+                raise NFLReadinessError(f"NFL_BINDING_MARKET_COUNT_INVALID:{market_key}")
+            outcomes = matching_markets[0].get("outcomes")
+            if not isinstance(outcomes, list) or len(outcomes) != 2:
+                raise NFLReadinessError(f"NFL_BINDING_OUTCOME_COUNT_INVALID:{market_key}")
+            if not all(isinstance(row, Mapping) for row in outcomes):
+                raise NFLReadinessError(f"NFL_BINDING_OUTCOME_INVALID:{market_key}")
+            names = [str(row.get("name") or "").strip().lower() for row in outcomes] if market_key == "totals" else [str(row.get("name") or "").strip() for row in outcomes]
+            if any(not name for name in names):
+                raise NFLReadinessError(f"NFL_BINDING_OUTCOME_NAME_MISSING:{market_key}")
+            if len(set(names)) != 2:
+                raise NFLReadinessError(f"NFL_BINDING_OUTCOME_DUPLICATE:{market_key}")
+            if set(names) != expected_names:
+                raise NFLReadinessError(f"NFL_BINDING_OUTCOME_PAIR_MISMATCH:{market_key}")
+    return payload
 
-    Promotion is not a manual runtime flag.  The exact-head registry is rebuilt
-    from historical validation, CI attestation and forward CLV evidence.  A
-    market whose derived stage is DEPLOYED must resolve its NFL-namespaced frozen
-    floor before M2 inference is permitted.  The existing Truth Gate owns the
-    final OFFICIAL_BET decision.
-    """
+
+def run_nfl_ready(*, promotion_registry: Mapping[str, Any], floor_path: str | Path = "config/truth_gate_floors.json", **kwargs: Any) -> NFLMachineReport:
     artifact_payload = kwargs.get("model_artifact")
     if not isinstance(artifact_payload, Mapping):
         raise NFLReadinessError("NFL_MODEL_ARTIFACT_REQUIRED")
     runtime_code = str(kwargs.get("runtime_code_git_sha") or "")
-    market_registry = _validate_registry(
-        promotion_registry,
-        artifact_payload=artifact_payload,
-        runtime_code_git_sha=runtime_code,
-    )
-
+    market_registry = _validate_registry(promotion_registry, artifact_payload=artifact_payload, runtime_code_git_sha=runtime_code)
     floors: dict[str, FrozenEdgeFloor] = {}
     for market, state in market_registry.items():
         if state.get("eligible") is True:
-            floors[market] = require_production_edge_floor(
-                market=_floor_key(market), path=floor_path
-            )
+            floors[market] = require_production_edge_floor(market=_floor_key(market), path=floor_path)
 
-    report = run_nfl_machine(**kwargs)
+    run_kwargs = dict(kwargs)
+    book_key = str(run_kwargs.get("book_key") or "draftkings")
+    supplied_odds = run_kwargs.get("odds_snapshot")
+    if supplied_odds is not None:
+        _validate_bettor_facing_odds_snapshot(supplied_odds, book_key=book_key)
+    original_fetcher = run_kwargs.get("odds_fetcher")
+    if original_fetcher is not None:
+        if not callable(original_fetcher):
+            raise NFLReadinessError("NFL_BINDING_ODDS_FETCHER_INVALID")
+        def validated_fetcher() -> Mapping[str, Any]:
+            fetched = original_fetcher()
+            if not isinstance(fetched, Mapping):
+                raise NFLReadinessError("NFL_BINDING_ODDS_FETCHER_OUTPUT_INVALID")
+            _validate_bettor_facing_odds_snapshot(fetched, book_key=book_key)
+            return fetched
+        run_kwargs["odds_fetcher"] = validated_fetcher
+
+    report = run_nfl_machine(**run_kwargs)
     resolved_results: list[NFLMachineResult] = []
     truth_gate_rows = 0
     official_bets = 0
     deployed_rows = 0
-
     for row in report.results:
         state = market_registry[row.market]
         deployed = state.get("eligible") is True
         if not deployed:
-            resolved_results.append(replace(
-                row,
-                bet_status="BLOCKED",
-                reason=f"NFL_PROMOTION_EVIDENCE_REQUIRED:{row.market}",
-            ))
+            resolved_results.append(replace(row, bet_status="BLOCKED", reason=f"NFL_PROMOTION_EVIDENCE_REQUIRED:{row.market}"))
             continue
         deployed_rows += 1
         floor = floors.get(row.market)
         if floor is None:
-            raise NFLReadinessError(
-                f"NFL_FROZEN_FLOOR_PREFLIGHT_MISSING:{_floor_key(row.market)}"
-            )
+            raise NFLReadinessError(f"NFL_FROZEN_FLOOR_PREFLIGHT_MISSING:{_floor_key(row.market)}")
         if row.reason == "NFL_QUOTE_STALE" or row.fair_market_p is None:
             resolved_results.append(replace(row, bet_status="BLOCKED"))
             continue
-
-        decision = decide_bet(
-            float(row.model_p),
-            float(row.american_odds),
-            fair_market_probability=float(row.fair_market_p),
-            bound=True,
-            fresh=True,
-            deployed=True,
-            edge_floor=float(floor.value_probability_points),
-            push_probability=float(row.push_p or 0.0),
-        )
+        decision = decide_bet(float(row.model_p), float(row.american_odds), fair_market_probability=float(row.fair_market_p), bound=True, fresh=True, deployed=True, edge_floor=float(floor.value_probability_points), push_probability=float(row.push_p or 0.0))
         truth_gate_rows += 1
         if decision.bet_status == "OFFICIAL_BET":
             official_bets += 1
-        resolved_results.append(replace(
-            row,
-            bet_status=decision.bet_status,
-            reason="TRUTH_GATE_RESOLVED",
-            edge=decision.edge,
-            ev_per_dollar=decision.ev_per_dollar,
-        ))
-
+        resolved_results.append(replace(row, bet_status=decision.bet_status, reason="TRUTH_GATE_RESOLVED", edge=decision.edge, ev_per_dollar=decision.ev_per_dollar))
     ordered = tuple(resolved_results)
     summary = dict(report.summary)
-    summary.update({
-        "blocked": sum(row.bet_status == "BLOCKED" for row in ordered),
-        "official_bets": official_bets,
-        "deployed_rows": deployed_rows,
-        "truth_gate_rows": truth_gate_rows,
-        "deployed_markets": sorted(
-            market for market, state in market_registry.items()
-            if state.get("eligible") is True
-        ),
-        "manual_eligible_toggle_required": False,
-        "floor_keys": sorted(_floor_key(market) for market in floors),
-    })
-    if truth_gate_rows:
-        run_status = "SUCCESS"
-    elif deployed_rows:
-        run_status = "BLOCKED"
-    else:
-        run_status = "BLOCKED"
+    summary.update({"blocked": sum(row.bet_status == "BLOCKED" for row in ordered), "official_bets": official_bets, "deployed_rows": deployed_rows, "truth_gate_rows": truth_gate_rows, "deployed_markets": sorted(market for market, state in market_registry.items() if state.get("eligible") is True), "manual_eligible_toggle_required": False, "floor_keys": sorted(_floor_key(market) for market in floors)})
+    run_status = "SUCCESS" if truth_gate_rows else "BLOCKED"
     return replace(report, results=ordered, summary=summary, run_status=run_status)
