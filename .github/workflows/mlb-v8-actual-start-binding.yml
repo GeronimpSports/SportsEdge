@@ -6,6 +6,8 @@ on:
     paths:
       - 'scripts/attest_mlb_v8_actual_starts.py'
       - 'scripts/build_mlb_v8_oddspapi_pit_v2.py'
+      - 'scripts/audit_mlb_v8_paired_replay_readiness_v2.py'
+      - 'sportsedge/sports/mlb/paired_replay_readiness.py'
       - '.github/workflows/mlb-v8-actual-start-binding.yml'
   workflow_dispatch:
 
@@ -23,9 +25,13 @@ jobs:
       - name: Verify fail-closed contracts
         run: |
           set -euo pipefail
-          python -m py_compile scripts/attest_mlb_v8_actual_starts.py scripts/build_mlb_v8_oddspapi_pit_v2.py
+          python -m py_compile \
+            scripts/attest_mlb_v8_actual_starts.py \
+            scripts/build_mlb_v8_oddspapi_pit_v2.py \
+            scripts/audit_mlb_v8_paired_replay_readiness_v2.py
           python scripts/attest_mlb_v8_actual_starts.py --self-test
           python scripts/build_mlb_v8_oddspapi_pit_v2.py --self-test
+          python scripts/audit_mlb_v8_paired_replay_readiness_v2.py --self-test
 
   bind-existing-history:
     if: github.event_name == 'workflow_dispatch'
@@ -82,6 +88,11 @@ jobs:
           if paired_closes <= 0:
               raise SystemExit('BLOCKED_ZERO_ACTUAL_START_BOUND_PAIRED_CLOSES')
           PY
+      - name: Audit actual-start-bound replay readiness
+        run: |
+          set -euo pipefail
+          python scripts/audit_mlb_v8_paired_replay_readiness_v2.py
+          cat artifacts/mlb_v8_replay_archive/oddspapi_pit_v2/paired_replay_readiness.json
       - name: Persist append-only provenance products
         run: |
           set -euo pipefail
