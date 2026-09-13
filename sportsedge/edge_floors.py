@@ -7,9 +7,11 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
+from sportsedge.market_ids import MarketIdError, aliases_for_canonical, canonical_market_id
+
 
 DEFAULT_EDGE_FLOOR_CONFIG = "config/truth_gate_floors.json"
-EDGE_FLOOR_SCHEMA_VERSION = 2
+EDGE_FLOOR_SCHEMA_VERSIONS = (2, 3)
 DEVIG_POLICY_SCHEMA_VERSIONS = (2, 3)
 DEVIG_POLICY_ID = "EDGE_FLOOR_DEVIG_V1"
 DEVIG_POLICY_STATUS = "FROZEN_PRE_DERIVATION"
@@ -48,6 +50,9 @@ class FrozenEdgeFloor:
     derivation_code_sha256: str
     oos_cutoff_utc: str
     frozen_by_commit: str
+    schema_version: int = 2
+    sport: str = ""
+    provenance_status: str = "FROZEN"
 
 
 def load_edge_floor_config(path: str = DEFAULT_EDGE_FLOOR_CONFIG) -> Mapping[str, Any]:
@@ -87,13 +92,14 @@ def _truth_gate(config: Mapping[str, Any]) -> Mapping[str, Any]:
     return truth_gate
 
 
-def require_frozen_devig_policy(*, config: Mapping[str, Any]) -> FrozenDevigPolicy:
-    """Resolve the frozen pre-derivation devig contract.
+def _schema_version(truth_gate: Mapping[str, Any]) -> int:
+    schema_version = truth_gate.get("schema_version")
+    if type(schema_version) is not int or schema_version not in EDGE_FLOOR_SCHEMA_VERSIONS:
+        raise EdgeFloorError("EDGE_FLOOR_SCHEMA_VERSION_MISMATCH")
+    return schema_version
 
-    Schema v3 nests edge-floor records by sport but preserves the devig-policy
-    contract unchanged. Accept only the explicitly supported schema versions;
-    floor resolution remains separately fail-closed until it is sport-aware.
-    """
+
+def require_frozen_devig_policy(*, config: Mapping[str, Any]) -> FrozenDevigPolicy:
     truth_gate = _truth_gate(config)
     schema_version = truth_gate.get("schema_version")
     if type(schema_version) is not int or schema_version not in DEVIG_POLICY_SCHEMA_VERSIONS:
@@ -162,37 +168,28 @@ def require_frozen_devig_policy(*, config: Mapping[str, Any]) -> FrozenDevigPoli
     )
 
 
-def require_frozen_edge_floor(*, market: str, config: Mapping[str, Any]) -> FrozenEdgeFloor:
-    if not isinstance(market, str) or not market.strip():
-        raise EdgeFloorError("market must be a non-empty string")
-
-    truth_gate = _truth_gate(config)
-
+def _require_production_contract(truth_gate: Mapping[str, Any]) -> None:
     production = truth_gate.get("production")
     if not isinstance(production, Mapping) or production.get("fail_closed") is not True:
         raise EdgeFloorError("truth_gate.production.fail_closed must be true")
     if production.get("allow_cli_floor_override") is not False:
         raise EdgeFloorError("production CLI floor overrides must be disabled")
-
     if production.get("require_frozen_floor_for_eligible_market") is not True:
         raise EdgeFloorError("FROZEN_FLOOR_POLICY_REQUIRED")
 
+
+def _require_v2_floor(market: str, truth_gate: Mapping[str, Any]) -> FrozenEdgeFloor:
     floors = truth_gate.get("edge_floors")
     if not isinstance(floors, Mapping):
         raise EdgeFloorError("missing truth_gate.edge_floors config")
-
     record = floors.get(market)
-    if not isinstance(record, Mapping):
-        raise EdgeFloorError(f"ELIGIBLE_MARKET_MISSING_OR_UNFROZEN_EDGE_FLOOR:{market}")
-
-    if record.get("status") != FloorStatus.FROZEN.value:
+    if not isinstance(record, Mapping) or record.get("status") != FloorStatus.FROZEN.value:
         raise EdgeFloorError(f"ELIGIBLE_MARKET_MISSING_OR_UNFROZEN_EDGE_FLOOR:{market}")
 
     value = _as_positive_decimal(record.get("value_probability_points"))
     method_version = record.get("method_version")
     evidence = record.get("evidence")
     frozen = record.get("frozen")
-
     if not isinstance(method_version, str) or not method_version.strip():
         raise EdgeFloorError(f"{market} floor lacks method_version")
     if not isinstance(evidence, Mapping):
@@ -201,10 +198,12 @@ def require_frozen_edge_floor(*, market: str, config: Mapping[str, Any]) -> Froz
         raise EdgeFloorError(f"{market} floor lacks frozen metadata")
 
     required_evidence = ("evidence_sha256", "derivation_code_sha256", "oos_cutoff_utc")
-    missing_evidence = [key for key in required_evidence if not isinstance(evidence.get(key), str) or not evidence.get(key).strip()]
+    missing_evidence = [
+        key for key in required_evidence
+        if not isinstance(evidence.get(key), str) or not evidence.get(key).strip()
+    ]
     if missing_evidence:
         raise EdgeFloorError(f"{market} floor missing evidence fields: {','.join(missing_evidence)}")
-
     frozen_by_commit = frozen.get("frozen_by_commit")
     if not isinstance(frozen_by_commit, str) or not frozen_by_commit.strip():
         raise EdgeFloorError(f"{market} floor lacks frozen_by_commit")
@@ -217,8 +216,105 @@ def require_frozen_edge_floor(*, market: str, config: Mapping[str, Any]) -> Froz
         derivation_code_sha256=evidence["derivation_code_sha256"],
         oos_cutoff_utc=evidence["oos_cutoff_utc"],
         frozen_by_commit=frozen_by_commit,
+        schema_version=2,
     )
 
 
-def require_production_edge_floor(*, market: str, path: str = DEFAULT_EDGE_FLOOR_CONFIG) -> FrozenEdgeFloor:
-    return require_frozen_edge_floor(market=market, config=load_edge_floor_config(path))
+def _infer_v3_sport(market: str, floors: Mapping[str, Any]) -> str:
+    matches: list[str] = []
+    for candidate_sport, sport_floors in floors.items():
+        if not isinstance(candidate_sport, str) or not isinstance(sport_floors, Mapping):
+            continue
+        try:
+            canonical = canonical_market_id(candidate_sport, market)
+            aliases = aliases_for_canonical(candidate_sport, canonical)
+        except MarketIdError:
+            continue
+        if any(alias in sport_floors for alias in aliases):
+            matches.append(candidate_sport.lower())
+    if len(matches) != 1:
+        reason = "AMBIGUOUS" if matches else "UNKNOWN"
+        raise EdgeFloorError(f"EDGE_FLOOR_SPORT_{reason}:{market}")
+    return matches[0]
+
+
+def _require_v3_floor(market: str, sport: str | None, truth_gate: Mapping[str, Any]) -> FrozenEdgeFloor:
+    floors = truth_gate.get("edge_floors")
+    if not isinstance(floors, Mapping):
+        raise EdgeFloorError("missing truth_gate.edge_floors config")
+    resolved_sport = sport.strip().lower() if isinstance(sport, str) and sport.strip() else _infer_v3_sport(market, floors)
+    sport_floors = next(
+        (
+            value
+            for key, value in floors.items()
+            if isinstance(key, str) and key.lower() == resolved_sport
+        ),
+        None,
+    )
+    if not isinstance(sport_floors, Mapping):
+        raise EdgeFloorError(f"ELIGIBLE_SPORT_MISSING_EDGE_FLOORS:{resolved_sport}")
+
+    try:
+        canonical = canonical_market_id(resolved_sport, market)
+        aliases = aliases_for_canonical(resolved_sport, canonical)
+    except MarketIdError as exc:
+        raise EdgeFloorError(str(exc)) from exc
+
+    matched = [(alias, sport_floors[alias]) for alias in aliases if alias in sport_floors]
+    if len(matched) != 1:
+        if len(matched) > 1:
+            raise EdgeFloorError(f"DUPLICATE_EDGE_FLOOR_ALIAS:{resolved_sport}:{canonical}")
+        raise EdgeFloorError(f"ELIGIBLE_MARKET_MISSING_OR_UNFROZEN_EDGE_FLOOR:{resolved_sport}:{canonical}")
+    _, raw_value = matched[0]
+    value = _as_positive_decimal(raw_value)
+
+    floor_policy = truth_gate.get("floor_policy")
+    if not isinstance(floor_policy, Mapping):
+        raise EdgeFloorError("EDGE_FLOOR_V3_POLICY_REQUIRED")
+    if floor_policy.get("status") != "FROZEN_BEFORE_JUDGED_STREAM":
+        raise EdgeFloorError("EDGE_FLOOR_V3_POLICY_NOT_FROZEN_PRECOLLECTION")
+    policy_id = floor_policy.get("policy_id")
+    if not isinstance(policy_id, str) or not policy_id.strip():
+        raise EdgeFloorError("EDGE_FLOOR_V3_POLICY_ID_REQUIRED")
+
+    return FrozenEdgeFloor(
+        market=canonical,
+        value_probability_points=value,
+        method_version=policy_id,
+        evidence_sha256="",
+        derivation_code_sha256="",
+        oos_cutoff_utc="",
+        frozen_by_commit="",
+        schema_version=3,
+        sport=resolved_sport,
+        provenance_status="FROZEN_BEFORE_JUDGED_STREAM",
+    )
+
+
+def require_frozen_edge_floor(
+    *,
+    market: str,
+    config: Mapping[str, Any],
+    sport: str | None = None,
+) -> FrozenEdgeFloor:
+    if not isinstance(market, str) or not market.strip():
+        raise EdgeFloorError("market must be a non-empty string")
+    truth_gate = _truth_gate(config)
+    schema_version = _schema_version(truth_gate)
+    _require_production_contract(truth_gate)
+    if schema_version == 2:
+        return _require_v2_floor(market.strip(), truth_gate)
+    return _require_v3_floor(market.strip(), sport, truth_gate)
+
+
+def require_production_edge_floor(
+    *,
+    market: str,
+    path: str = DEFAULT_EDGE_FLOOR_CONFIG,
+    sport: str | None = None,
+) -> FrozenEdgeFloor:
+    return require_frozen_edge_floor(
+        market=market,
+        sport=sport,
+        config=load_edge_floor_config(path),
+    )
