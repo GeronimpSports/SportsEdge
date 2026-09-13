@@ -8,7 +8,9 @@ on:
       - 'config/nfl_m2_freeze.json'
       - 'config/football_prop_engine_surface.json'
       - 'sportsedge/sports/nfl/research_play_level.py'
+      - 'sportsedge/research_diagnostics.py'
       - 'tests/test_nfl_research_play_level.py'
+      - 'tests/test_research_diagnostics.py'
       - 'scripts/audit_research_modeling_upgrade.py'
       - '.github/workflows/research-modeling-upgrade-contract.yml'
   push:
@@ -19,7 +21,9 @@ on:
       - 'config/nfl_m2_freeze.json'
       - 'config/football_prop_engine_surface.json'
       - 'sportsedge/sports/nfl/research_play_level.py'
+      - 'sportsedge/research_diagnostics.py'
       - 'tests/test_nfl_research_play_level.py'
+      - 'tests/test_research_diagnostics.py'
       - 'scripts/audit_research_modeling_upgrade.py'
       - '.github/workflows/research-modeling-upgrade-contract.yml'
 
@@ -35,8 +39,16 @@ jobs:
         with:
           python-version: '3.12'
       - name: Compile research surface
-        run: python -m py_compile scripts/audit_research_modeling_upgrade.py sportsedge/sports/nfl/research_play_level.py tests/test_nfl_research_play_level.py
+        run: >-
+          python -m py_compile
+          scripts/audit_research_modeling_upgrade.py
+          sportsedge/sports/nfl/research_play_level.py
+          sportsedge/research_diagnostics.py
+          tests/test_nfl_research_play_level.py
+          tests/test_research_diagnostics.py
       - name: Enforce research-only boundary
         run: python scripts/audit_research_modeling_upgrade.py
       - name: Verify PIT-safe play-level builder
         run: python -m unittest tests.test_nfl_research_play_level -v
+      - name: Verify scoring calibration ablation and drift diagnostics
+        run: python -m unittest tests.test_research_diagnostics -v
