@@ -138,8 +138,7 @@ def _replace_manifest_identity(value: Any, *, old_hash: str, new_hash: str) -> A
     if isinstance(value, str):
         if value == old_hash:
             return new_hash
-        old_uri = f"manifest://sha256/{old_hash}"
-        if value == old_uri:
+        if value == f"manifest://sha256/{old_hash}":
             return f"manifest://sha256/{new_hash}"
     return value
 
@@ -150,6 +149,15 @@ def _contains_manifest_identity(value: Any, manifest_hash: str) -> bool:
     if isinstance(value, list):
         return any(_contains_manifest_identity(item, manifest_hash) for item in value)
     return isinstance(value, str) and manifest_hash in value
+
+
+def _legacy_manifest_base(payload: dict[str, Any]) -> dict[str, Any]:
+    base = dict(payload)
+    base.pop("manifest_sha256", None)
+    # The canonical runner appends this attribution after calculating the
+    # manifest hash, so it is deliberately outside the legacy identity unit.
+    base.pop("participation_attribution", None)
+    return base
 
 
 def upgrade_generated_bundle(
@@ -167,9 +175,20 @@ def upgrade_generated_bundle(
     old_hash = str(legacy_manifest.get("manifest_sha256") or "").strip().lower()
     if len(old_hash) != 64 or any(ch not in "0123456789abcdef" for ch in old_hash):
         raise ValueError("NFL_SOURCE_FREEZE_LEGACY_MANIFEST_HASH_INVALID")
+    if manifest_sha256(_legacy_manifest_base(legacy_manifest)) != old_hash:
+        raise ValueError("NFL_SOURCE_FREEZE_LEGACY_MANIFEST_HASH_MISMATCH")
+    legacy_sources = legacy_manifest.get("sources")
+    if not isinstance(legacy_sources, list):
+        raise ValueError("NFL_SOURCE_FREEZE_LEGACY_MANIFEST_SOURCES_INVALID")
+    # Prove the canonical runner itself saw the same allowed source set/bytes
+    # before replacing its generic legacy URIs with frozen upstream identities.
+    bind_observed_sources_to_contract(legacy_sources, source_contract)
+
     schedule = next((row for row in observed_sources if row["name"] == "schedule"), None)
     if schedule is None:
         raise ValueError("NFL_SOURCE_FREEZE_SCHEDULE_SOURCE_MISSING")
+    if legacy_manifest.get("schedule_anchor_sha256") != schedule["sha256"]:
+        raise ValueError("NFL_SOURCE_FREEZE_LEGACY_SCHEDULE_ANCHOR_MISMATCH")
 
     v2_manifest = build_nfl_source_manifest(
         observed_sources,
@@ -189,9 +208,13 @@ def upgrade_generated_bundle(
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise ValueError(f"NFL_SOURCE_FREEZE_GENERATED_ARTIFACT_UNREADABLE:{path}") from exc
+        if not _contains_manifest_identity(payload, old_hash):
+            raise ValueError(f"NFL_SOURCE_FREEZE_GENERATED_ARTIFACT_SOURCE_BINDING_MISSING:{path}")
         upgraded = _replace_manifest_identity(payload, old_hash=old_hash, new_hash=new_hash)
         if _contains_manifest_identity(upgraded, old_hash):
             raise ValueError(f"NFL_SOURCE_FREEZE_STALE_MANIFEST_IDENTITY:{path}")
+        if not _contains_manifest_identity(upgraded, new_hash):
+            raise ValueError(f"NFL_SOURCE_FREEZE_NEW_MANIFEST_IDENTITY_MISSING:{path}")
         _write_json(path, upgraded)
     return new_hash
 
@@ -207,8 +230,8 @@ def main(argv: list[str] | None = None) -> int:
         "phase": "PRE_MODEL_FIT",
         "verified_before_model_fit": True,
     }
-    # Write this before invoking the fitting process. A child failure therefore
-    # cannot be mistaken for a successful post-fit attestation.
+    # Persist pre-fit PASS before invoking the canonical runner. If that child
+    # fails, no post-fit/bundle-upgrade PASS marker is ever written.
     _write_json(args.freeze_attestation_out, attestation)
 
     child = [
