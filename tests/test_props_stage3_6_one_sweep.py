@@ -55,6 +55,31 @@ class PropsSweepTests(unittest.TestCase):
  def test_separate_events(self):
   self.assertGreater(football_td(sport="NFL",entity_id="x",pit={"team_expected_touchdowns":3,"player_td_opportunity_share":.2}).probability_at_least_one,0)
   self.assertGreater(mlb_hr(entity_id="x",pit={"expected_plate_appearances":4.3,"hr_probability_per_pa":.06}).probability_at_least_one,0)
+ def test_stage4_zero_event_boundaries_are_exact(self):
+  td=football_td(sport="NFL",entity_id="zero",pit={"team_expected_touchdowns":0.0,"player_td_opportunity_share":1.0})
+  hr=mlb_hr(entity_id="zero",pit={"expected_plate_appearances":4.0,"hr_probability_per_pa":0.0})
+  unavailable=football_td(sport="CFB",entity_id="out",pit={"team_expected_touchdowns":4.0,"player_td_opportunity_share":.5,"availability_probability":0.0})
+  for d in (td,hr,unavailable):
+   self.assertEqual(d.probability_at_least_one,0.0)
+   self.assertEqual(d.probabilities[0],1.0)
+   self.assertTrue(all(p==0.0 for p in d.probabilities[1:]))
+ def test_stage4_invalid_quantities_fail_closed(self):
+  for value in (-1.0,float("nan"),float("inf")):
+   with self.subTest(kind="team_td",value=value), self.assertRaisesRegex(ValueError,"INVALID_EVENT_QUANTITY:team_expected_touchdowns"):
+    football_td(sport="NFL",entity_id="x",pit={"team_expected_touchdowns":value,"player_td_opportunity_share":.2})
+   with self.subTest(kind="pa",value=value), self.assertRaisesRegex(ValueError,"INVALID_EVENT_QUANTITY:expected_plate_appearances"):
+    mlb_hr(entity_id="x",pit={"expected_plate_appearances":value,"hr_probability_per_pa":.05})
+ def test_stage4_invalid_probabilities_fail_closed(self):
+  football_cases=(("player_td_opportunity_share",-0.1),("player_td_opportunity_share",1.1),("player_td_opportunity_share",float("nan")),("availability_probability",float("inf")))
+  for name,value in football_cases:
+   pit={"team_expected_touchdowns":3.0,"player_td_opportunity_share":.2,"availability_probability":1.0};pit[name]=value
+   with self.subTest(kind="football",name=name), self.assertRaisesRegex(ValueError,f"INVALID_EVENT_PROBABILITY:{name}"):
+    football_td(sport="NFL",entity_id="x",pit=pit)
+  mlb_cases=(("hr_probability_per_pa",-0.1),("hr_probability_per_pa",1.1),("hr_probability_per_pa",float("nan")),("availability_probability",float("inf")))
+  for name,value in mlb_cases:
+   pit={"expected_plate_appearances":4.0,"hr_probability_per_pa":.05,"availability_probability":1.0};pit[name]=value
+   with self.subTest(kind="mlb",name=name), self.assertRaisesRegex(ValueError,f"INVALID_EVENT_PROBABILITY:{name}"):
+    mlb_hr(entity_id="x",pit=pit)
  def test_pit_fail_closed(self):
   with self.assertRaisesRegex(ValueError,"PIT_FIELDS_MISSING"):
    validate_pit_inputs("NFL",{"asof_ts":"2026-09-13T10:00:00+00:00"})
