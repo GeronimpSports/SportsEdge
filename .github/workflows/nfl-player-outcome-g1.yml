@@ -6,8 +6,10 @@ on:
       - 'config/research/nfl_player_outcome_engine_g1.json'
       - 'sportsedge/sports/nfl/player_outcomes_g1.py'
       - 'sportsedge/sports/nfl/player_outcomes_g1_validation.py'
+      - 'scripts/run_nfl_player_outcome_g1_fixture.py'
       - 'tests/test_nfl_player_outcomes_g1.py'
       - 'tests/test_nfl_player_outcomes_g1_validation.py'
+      - 'tests/test_nfl_player_outcome_g1_fixture.py'
       - '.github/workflows/nfl-player-outcome-g1.yml'
   workflow_dispatch:
 
@@ -24,9 +26,9 @@ jobs:
         with:
           python-version-file: '.python-version'
       - name: Compile G1 research surface
-        run: python -m py_compile sportsedge/sports/nfl/player_outcomes_g1.py sportsedge/sports/nfl/player_outcomes_g1_validation.py tests/test_nfl_player_outcomes_g1.py tests/test_nfl_player_outcomes_g1_validation.py
+        run: python -m py_compile sportsedge/sports/nfl/player_outcomes_g1.py sportsedge/sports/nfl/player_outcomes_g1_validation.py scripts/run_nfl_player_outcome_g1_fixture.py tests/test_nfl_player_outcomes_g1.py tests/test_nfl_player_outcomes_g1_validation.py tests/test_nfl_player_outcome_g1_fixture.py
       - name: Run G1 research contracts
-        run: python -m unittest tests.test_nfl_player_outcomes_g1 tests.test_nfl_player_outcomes_g1_validation -v
+        run: python -m unittest tests.test_nfl_player_outcomes_g1 tests.test_nfl_player_outcomes_g1_validation tests.test_nfl_player_outcome_g1_fixture -v
       - name: Assert football props remain fail-closed
         run: python - <<'PY'
           import json
