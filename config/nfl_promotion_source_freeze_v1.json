@@ -6,9 +6,17 @@
     "sportsedge_code_git_sha": "b117c568008a9a592ed9d4135aa1c33f11a10288",
     "source_manifest_sha256": "b7ff10325b69dd140e8c9d40971475595871e43f8d5a3c2ed2d9ffa8774c0723"
   },
+  "frozen_store": {
+    "type": "sportsedge_github_release",
+    "repository": "isaacrome21-sys/SportsEdge",
+    "release_tag": "nfl-source-freeze-v1",
+    "asset_count": 33,
+    "overwrite_forbidden": true
+  },
   "sources": {
     "schedule": {
-      "uri": "https://raw.githubusercontent.com/nflverse/nfldata/33488cbcb33839efeb3776bf81673787d18a2bcf/data/games.csv",
+      "uri": "https://github.com/isaacrome21-sys/SportsEdge/releases/download/nfl-source-freeze-v1/games.csv",
+      "origin_uri": "https://raw.githubusercontent.com/nflverse/nfldata/33488cbcb33839efeb3776bf81673787d18a2bcf/data/games.csv",
       "expected_sha256": "45a0a605c4d6a94d241dfc0e4f8d69175001b52ec87d9e4c7ea72902810e9181",
       "upstream_identity": {
         "type": "git_commit_blob",
@@ -19,7 +27,8 @@
       }
     },
     "stadiums": {
-      "uri": "https://raw.githubusercontent.com/greerreNFL/Stadiums/efa9543af50b01424754219fa0e4f3c7044ff198/data/team_stadiums.csv",
+      "uri": "https://github.com/isaacrome21-sys/SportsEdge/releases/download/nfl-source-freeze-v1/team_stadiums.csv",
+      "origin_uri": "https://raw.githubusercontent.com/greerreNFL/Stadiums/efa9543af50b01424754219fa0e4f3c7044ff198/data/team_stadiums.csv",
       "expected_sha256": "933eea58fdf6e02b38492f1176a8d463266dc92f1f6b3dcd70f1f4427da9bc96",
       "upstream_identity": {
         "type": "git_commit_path",
@@ -29,7 +38,8 @@
       }
     },
     "starter_overrides": {
-      "uri": "repo://config/nfl_historical_starter_overrides.json",
+      "uri": "https://github.com/isaacrome21-sys/SportsEdge/releases/download/nfl-source-freeze-v1/nfl_historical_starter_overrides.json",
+      "origin_uri": "repo://config/nfl_historical_starter_overrides.json",
       "expected_sha256": "99f19d2a82baf66275b3332bbd76d918bb92e4fb4b25b34caf276b1b8887d43d",
       "upstream_identity": {
         "type": "sportsedge_repo_file",
@@ -40,7 +50,8 @@
   "seasonal_sources": {
     "pbp": {
       "seasons": [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
-      "uri_template": "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{season}.csv.gz",
+      "uri_template": "https://github.com/isaacrome21-sys/SportsEdge/releases/download/nfl-source-freeze-v1/play_by_play_{season}.csv.gz",
+      "origin_uri_template": "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{season}.csv.gz",
       "upstream_identity": {
         "type": "github_release_asset",
         "repository": "nflverse/nflverse-data",
@@ -63,7 +74,8 @@
     },
     "participation": {
       "seasons": [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
-      "uri_template": "https://github.com/nflverse/nflverse-data/releases/download/pbp_participation/pbp_participation_{season}.csv",
+      "uri_template": "https://github.com/isaacrome21-sys/SportsEdge/releases/download/nfl-source-freeze-v1/pbp_participation_{season}.csv",
+      "origin_uri_template": "https://github.com/nflverse/nflverse-data/releases/download/pbp_participation/pbp_participation_{season}.csv",
       "upstream_identity": {
         "type": "github_release_asset",
         "repository": "nflverse/nflverse-data",
@@ -86,7 +98,8 @@
     },
     "depth": {
       "seasons": [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
-      "uri_template": "https://github.com/nflverse/nflverse-data/releases/download/depth_charts/depth_charts_{season}.csv",
+      "uri_template": "https://github.com/isaacrome21-sys/SportsEdge/releases/download/nfl-source-freeze-v1/depth_charts_{season}.csv",
+      "origin_uri_template": "https://github.com/nflverse/nflverse-data/releases/download/depth_charts/depth_charts_{season}.csv",
       "upstream_identity": {
         "type": "github_release_asset",
         "repository": "nflverse/nflverse-data",
