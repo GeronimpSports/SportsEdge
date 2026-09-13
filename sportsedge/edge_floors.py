@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 DEFAULT_EDGE_FLOOR_CONFIG = "config/truth_gate_floors.json"
 EDGE_FLOOR_SCHEMA_VERSION = 2
+DEVIG_POLICY_SCHEMA_VERSIONS = (2, 3)
 DEVIG_POLICY_ID = "EDGE_FLOOR_DEVIG_V1"
 DEVIG_POLICY_STATUS = "FROZEN_PRE_DERIVATION"
 SUPPORTED_DEVIG_METHODS = ("MULTIPLICATIVE_V1", "POWER_V1", "SHIN_V1")
@@ -87,15 +88,15 @@ def _truth_gate(config: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def require_frozen_devig_policy(*, config: Mapping[str, Any]) -> FrozenDevigPolicy:
-    """Resolve the pre-derivation devig contract from the existing floor schema.
+    """Resolve the frozen pre-derivation devig contract.
 
-    The policy is deliberately stored beside edge floors rather than in a second
-    configuration/schema.  It chooses one estimator explicitly; sensitivity
-    methods are diagnostics/gates and are never aggregated by taking a minimum.
+    Schema v3 nests edge-floor records by sport but preserves the devig-policy
+    contract unchanged. Accept only the explicitly supported schema versions;
+    floor resolution remains separately fail-closed until it is sport-aware.
     """
     truth_gate = _truth_gate(config)
     schema_version = truth_gate.get("schema_version")
-    if type(schema_version) is not int or schema_version != EDGE_FLOOR_SCHEMA_VERSION:
+    if type(schema_version) is not int or schema_version not in DEVIG_POLICY_SCHEMA_VERSIONS:
         raise EdgeFloorError("EDGE_FLOOR_SCHEMA_VERSION_MISMATCH")
 
     raw = truth_gate.get("devig_policy")
@@ -120,10 +121,7 @@ def require_frozen_devig_policy(*, config: Mapping[str, Any]) -> FrozenDevigPoli
     if methods != SUPPORTED_DEVIG_METHODS:
         raise EdgeFloorError("DEVIG_SENSITIVITY_METHODS_MISMATCH")
 
-    limit = _as_nonnegative_decimal(
-        raw.get("sensitivity_limit_absolute_probability_points"),
-        field="sensitivity_limit_absolute_probability_points",
-    )
+    limit = _as_nonnegative_decimal(raw.get("sensitivity_limit_absolute_probability_points"), field="sensitivity_limit_absolute_probability_points")
     if limit <= 0 or limit >= 1:
         raise EdgeFloorError("DEVIG_SENSITIVITY_LIMIT_INVALID")
 
@@ -134,9 +132,7 @@ def require_frozen_devig_policy(*, config: Mapping[str, Any]) -> FrozenDevigPoli
     if longshot not in methods:
         raise EdgeFloorError("DEVIG_LONGSHOT_ESTIMATOR_INVALID")
 
-    haircut = _as_nonnegative_decimal(
-        raw.get("haircut_probability_points"), field="haircut_probability_points"
-    )
+    haircut = _as_nonnegative_decimal(raw.get("haircut_probability_points"), field="haircut_probability_points")
     if haircut >= 1:
         raise EdgeFloorError("DEVIG_HAIRCUT_INVALID")
 
@@ -147,76 +143,46 @@ def require_frozen_devig_policy(*, config: Mapping[str, Any]) -> FrozenDevigPoli
     if sensitivity_failure != "BLOCK":
         raise EdgeFloorError("DEVIG_SENSITIVITY_FAILURE_MUST_BLOCK")
 
-    return FrozenDevigPolicy(
-        policy_id=DEVIG_POLICY_ID,
-        longshot_trigger_american_odds=trigger,
-        longshot_trigger_rule=trigger_rule,
-        sensitivity_methods=methods,
-        sensitivity_limit_absolute_probability_points=limit,
-        stable_candidate_estimator=stable,
-        longshot_candidate_estimator=longshot,
-        haircut_probability_points=haircut,
-        aggregation_rule=aggregation_rule,
-        sensitivity_failure=sensitivity_failure,
-    )
+    return FrozenDevigPolicy(policy_id=DEVIG_POLICY_ID, longshot_trigger_american_odds=trigger, longshot_trigger_rule=trigger_rule, sensitivity_methods=methods, sensitivity_limit_absolute_probability_points=limit, stable_candidate_estimator=stable, longshot_candidate_estimator=longshot, haircut_probability_points=haircut, aggregation_rule=aggregation_rule, sensitivity_failure=sensitivity_failure)
 
 
 def require_frozen_edge_floor(*, market: str, config: Mapping[str, Any]) -> FrozenEdgeFloor:
     if not isinstance(market, str) or not market.strip():
         raise EdgeFloorError("market must be a non-empty string")
-
     truth_gate = _truth_gate(config)
-
     production = truth_gate.get("production")
     if not isinstance(production, Mapping) or production.get("fail_closed") is not True:
         raise EdgeFloorError("truth_gate.production.fail_closed must be true")
     if production.get("allow_cli_floor_override") is not False:
         raise EdgeFloorError("production CLI floor overrides must be disabled")
-
     if production.get("require_frozen_floor_for_eligible_market") is not True:
         raise EdgeFloorError("FROZEN_FLOOR_POLICY_REQUIRED")
-
     floors = truth_gate.get("edge_floors")
     if not isinstance(floors, Mapping):
         raise EdgeFloorError("missing truth_gate.edge_floors config")
-
     record = floors.get(market)
     if not isinstance(record, Mapping):
         raise EdgeFloorError(f"ELIGIBLE_MARKET_MISSING_OR_UNFROZEN_EDGE_FLOOR:{market}")
-
     if record.get("status") != FloorStatus.FROZEN.value:
         raise EdgeFloorError(f"ELIGIBLE_MARKET_MISSING_OR_UNFROZEN_EDGE_FLOOR:{market}")
-
     value = _as_positive_decimal(record.get("value_probability_points"))
     method_version = record.get("method_version")
     evidence = record.get("evidence")
     frozen = record.get("frozen")
-
     if not isinstance(method_version, str) or not method_version.strip():
         raise EdgeFloorError(f"{market} floor lacks method_version")
     if not isinstance(evidence, Mapping):
         raise EdgeFloorError(f"{market} floor lacks evidence metadata")
     if not isinstance(frozen, Mapping):
         raise EdgeFloorError(f"{market} floor lacks frozen metadata")
-
     required_evidence = ("evidence_sha256", "derivation_code_sha256", "oos_cutoff_utc")
     missing_evidence = [key for key in required_evidence if not isinstance(evidence.get(key), str) or not evidence.get(key).strip()]
     if missing_evidence:
         raise EdgeFloorError(f"{market} floor missing evidence fields: {','.join(missing_evidence)}")
-
     frozen_by_commit = frozen.get("frozen_by_commit")
     if not isinstance(frozen_by_commit, str) or not frozen_by_commit.strip():
         raise EdgeFloorError(f"{market} floor lacks frozen_by_commit")
-
-    return FrozenEdgeFloor(
-        market=market,
-        value_probability_points=value,
-        method_version=method_version,
-        evidence_sha256=evidence["evidence_sha256"],
-        derivation_code_sha256=evidence["derivation_code_sha256"],
-        oos_cutoff_utc=evidence["oos_cutoff_utc"],
-        frozen_by_commit=frozen_by_commit,
-    )
+    return FrozenEdgeFloor(market=market, value_probability_points=value, method_version=method_version, evidence_sha256=evidence["evidence_sha256"], derivation_code_sha256=evidence["derivation_code_sha256"], oos_cutoff_utc=evidence["oos_cutoff_utc"], frozen_by_commit=frozen_by_commit)
 
 
 def require_production_edge_floor(*, market: str, path: str = DEFAULT_EDGE_FLOOR_CONFIG) -> FrozenEdgeFloor:
