@@ -1,12 +1,13 @@
 name: closing-line-archive
 
-# CLOSING_LINE_ARCHIVE_V1 — model-free two-sided price archival for NFL, CFB
-# and MLB. Every row is labelled NOT_EVIDENCE. This lane holds no promotion
-# authority and no evidence-clock authority. It exists solely to accumulate the
-# closing-line dataset that no free source currently provides.
+# CLOSING_LINE_ARCHIVE_V1 policy with V3 transport: model-free two-sided price
+# archival for NFL, CFB and MLB. Rows remain NOT_EVIDENCE. V3 additionally
+# preserves the exact canonical paid Odds API payload by SHA-256 so future
+# sport-specific admission can verify row provenance instead of trusting a hash.
 #
-# MLB is guarded by StatsAPI status/first-play before a paid capture is admitted.
-# Overlapping windows use explicit priority: close > t0_prestart > decision.
+# MLB remains guarded by StatsAPI status/first-play before a paid capture is
+# admitted. Overlapping windows use explicit priority: close > t0_prestart >
+# decision. No promotion or evidence-clock authority is granted here.
 
 on:
   workflow_dispatch:
@@ -49,6 +50,7 @@ jobs:
         run: |
           python -m unittest tests.test_closing_line_archive -v
           python -m unittest tests.test_closing_line_archive_v2 -v
+          python -m unittest tests.test_closing_line_archive_v3 -v
 
       - name: Attach the append-only data branch
         id: data
@@ -73,14 +75,14 @@ jobs:
           EXTRA=""
           if [[ "$MODE" == "dry-run" ]]; then EXTRA="--dry-run"; fi
           mkdir -p artifacts/closing-line-archive
-          python -m scripts.capture_closing_line_archive_v2 \
+          python -m scripts.capture_closing_line_archive_v3 \
             --policy config/closing_line_archive_policy_v1.json \
             --out-dir .data-branch \
             --status-out artifacts/closing-line-archive/status.json \
             $EXTRA
           echo "rows=$(jq -r '.total_rows_written // 0' artifacts/closing-line-archive/status.json)" >> "$GITHUB_OUTPUT"
 
-      - name: Commit captured prices append-only
+      - name: Commit captured prices and raw payloads append-only
         if: steps.capture.outputs.rows != '0'
         shell: bash
         run: |

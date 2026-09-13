@@ -8,6 +8,7 @@
     ".github/workflows/football-nfl-forward-clv-collection.yml",
     ".github/workflows/ev-tracker.yml",
     ".github/workflows/cfb-forward-pit-source-capture.yml",
+    ".github/workflows/cfb-forward-weather-evidence.yml",
     ".github/workflows/cfb-current-history-capture.yml",
     ".github/workflows/archive-mlb-game-odds.yml",
     ".github/workflows/archive-mlb-game-odds-failover.yml",
