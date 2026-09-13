@@ -268,30 +268,26 @@ def _require_v3_floor(market: str, sport: str | None, truth_gate: Mapping[str, A
     _, raw_value = matched[0]
     value = _as_positive_decimal(raw_value)
 
-    freeze = truth_gate.get("edge_floor_freeze")
-    prereg = truth_gate.get("precollection_preregistration")
-    if not isinstance(freeze, Mapping) or freeze.get("status") != "FROZEN_PRECOLLECTION":
-        raise EdgeFloorError("EDGE_FLOOR_V3_FREEZE_REQUIRED")
-    if not isinstance(prereg, Mapping) or prereg.get("status") != "PREREGISTERED_PRECOLLECTION":
-        raise EdgeFloorError("EDGE_FLOOR_V3_PREREGISTRATION_REQUIRED")
-    method_version = freeze.get("method_version")
-    frozen_by_commit = freeze.get("frozen_by_commit")
-    if not isinstance(method_version, str) or not method_version.strip():
-        raise EdgeFloorError("EDGE_FLOOR_V3_METHOD_VERSION_REQUIRED")
-    if not isinstance(frozen_by_commit, str) or not frozen_by_commit.strip():
-        raise EdgeFloorError("EDGE_FLOOR_V3_FROZEN_COMMIT_REQUIRED")
+    floor_policy = truth_gate.get("floor_policy")
+    if not isinstance(floor_policy, Mapping):
+        raise EdgeFloorError("EDGE_FLOOR_V3_POLICY_REQUIRED")
+    if floor_policy.get("status") != "FROZEN_BEFORE_JUDGED_STREAM":
+        raise EdgeFloorError("EDGE_FLOOR_V3_POLICY_NOT_FROZEN_PRECOLLECTION")
+    policy_id = floor_policy.get("policy_id")
+    if not isinstance(policy_id, str) or not policy_id.strip():
+        raise EdgeFloorError("EDGE_FLOOR_V3_POLICY_ID_REQUIRED")
 
     return FrozenEdgeFloor(
         market=canonical,
         value_probability_points=value,
-        method_version=method_version,
+        method_version=policy_id,
         evidence_sha256="",
         derivation_code_sha256="",
         oos_cutoff_utc="",
-        frozen_by_commit=frozen_by_commit,
+        frozen_by_commit="",
         schema_version=3,
         sport=resolved_sport,
-        provenance_status="PREREGISTERED_PRECOLLECTION",
+        provenance_status="FROZEN_BEFORE_JUDGED_STREAM",
     )
 
 
