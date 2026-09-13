@@ -26,7 +26,9 @@
     "minimum_fold_win_rate": 0.6666666666666666,
     "minimum_fold_wins": 4,
     "ties_are_wins": false,
-    "pass_requires_frozen_benchmark_rule": true
+    "pass_requires_frozen_benchmark_rule": true,
+    "benchmark_policy_schema": "SPORTSEDGE_NFL_V2K_BENCHMARK_POLICY_V1",
+    "benchmark_id": "M1_CALIBRATED_MARKET_V1"
   },
   "joint_distribution_required": true,
   "markets_if_model_valid": ["moneyline", "spread", "game_total", "home_team_total", "away_team_total"],
