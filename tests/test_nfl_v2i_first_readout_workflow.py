@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 import unittest
 
+# Bootstrap-only touch: the workflow was introduced on the prior main commit.
 ROOT = Path(__file__).resolve().parents[1]
 PREREG = ROOT / "config/research/nfl_v2i_shared_game_regime_prereg_2026-09-12.json"
 WORKFLOW = ROOT / ".github/workflows/nfl-v2i-first-readout.yml"
