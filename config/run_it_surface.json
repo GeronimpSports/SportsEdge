@@ -23,7 +23,7 @@
       "research_candidate_usage": "PAPER_ONLY_ZERO_UNITS",
       "reserved_2026_stream_usage": "FORWARD_EVIDENCE_ONLY_NO_TUNING",
       "blocker": "NFL_PROMOTED_MODEL_AUTHORITY_REQUIRED;NFL_FROZEN_M2_PLUS_LIVE_SOURCES_REQUIRED_FOR_GAME_MODEL_P;NFL_PROPS_NO_ENGINE",
-      "notes": "RUN IT may consume an NFL model only after candidate status PROMOTED plus explicit promotion, Model_P, frozen-artifact and Truth Gate authority. Rejected, failed, blocked, PAPER, research-only and untested candidates are zero-unit PAPER only and cannot drive bettor-facing bet direction. Until such authority exists, RUN IT is Layer B market-context only. The 2026 stream is reserved for first-write forward evidence and predeclared checkpoint evaluation; it cannot tune candidate architecture, features, hyperparameters or thresholds. PLAYER_PROPS remains NO_ENGINE."
+      "notes": "RUN IT may consume an NFL model only after candidate status PROMOTED plus explicit promotion, Model_P, frozen-artifact and Truth Gate authority. Rejected, failed, blocked, PAPER, research-only and untested candidates are zero-unit PAPER only and cannot drive bettor-facing bet direction. Until such authority exists, RUN IT is Layer B market-context only. The 2026 stream is reserved for first-write forward evidence and predeclared checkpoint evaluation; it cannot tune candidate architecture, features, hyperparameters or thresholds. PLAYER_PROPS lane is intentionally emitted as blocked NO_ENGINE and is not executed while the authoritative prop surface declares NFL NO_ENGINE."
     },
     "CFB": {
       "lane": "PREGAME_GAME_MODEL_WITH_PROPS_NO_ENGINE",
