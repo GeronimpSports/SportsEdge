@@ -11,6 +11,7 @@ on:
       - 'sportsedge/sports/nfl/**'
       - 'scripts/*nfl*.py'
       - 'scripts/verify_evidence_determinism.py'
+      - 'config/nfl_promotion_source_freeze_v1.json'
       - 'tests/test_football*.py'
       - 'tests/test_nfl*.py'
       - '.github/workflows/football-nfl-promotion-evidence.yml'
@@ -24,6 +25,7 @@ on:
       - 'sportsedge/sports/nfl/**'
       - 'scripts/*nfl*.py'
       - 'scripts/verify_evidence_determinism.py'
+      - 'config/nfl_promotion_source_freeze_v1.json'
       - 'tests/test_football*.py'
       - 'tests/test_nfl*.py'
       - '.github/workflows/football-nfl-promotion-evidence.yml'
@@ -63,9 +65,11 @@ jobs:
             sportsedge/sports/nfl/m2_history_policy.py \
             sportsedge/sports/nfl/historical_validation.py \
             sportsedge/sports/nfl/production_validation.py \
+            sportsedge/sports/nfl/source_contract.py \
             sportsedge/sports/nfl/source_manifest.py \
             sportsedge/sports/nfl/simulator_profile.py \
             scripts/run_nfl_production_validation.py \
+            scripts/run_nfl_production_validation_frozen.py \
             scripts/run_nfl_v2_candidate_validation.py \
             scripts/validate_nfl_v2_candidate.py \
             scripts/bind_nfl_math_to_source_manifest.py \
@@ -87,9 +91,8 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/football/sources/{pbp,participation,depth}
 
-          # These are immutable/frozen evidence inputs. Retry only transport
-          # failures; the URL, returned bytes, and downstream hashes remain
-          # unchanged, and the workflow still fails closed after bounded tries.
+          # Transport retries may repeat the same source request, but source
+          # identity is frozen separately by the checked-in SHA-256 contract.
           fetch_source() {
             local url="$1"
             local output="$2"
@@ -100,7 +103,7 @@ jobs:
           }
 
           fetch_source \
-            'https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv' \
+            'https://raw.githubusercontent.com/nflverse/nfldata/33488cbcb33839efeb3776bf81673787d18a2bcf/data/games.csv' \
             artifacts/football/sources/games.csv
           fetch_source \
             'https://raw.githubusercontent.com/greerreNFL/Stadiums/efa9543af50b01424754219fa0e4f3c7044ff198/data/team_stadiums.csv' \
@@ -121,7 +124,9 @@ jobs:
         env:
           TZ: UTC
         run: >-
-          python scripts/run_nfl_production_validation.py
+          python scripts/run_nfl_production_validation_frozen.py
+          --source-contract config/nfl_promotion_source_freeze_v1.json
+          --freeze-attestation-out artifacts/football/nfl_source_freeze_attestation.json
           --schedule-file artifacts/football/sources/games.csv
           --pbp-dir artifacts/football/sources/pbp
           --participation-dir artifacts/football/sources/participation
@@ -143,11 +148,21 @@ jobs:
 
           model_path = Path('artifacts/football/nfl_m2_model.json')
           manifest_path = Path('artifacts/football/nfl_source_manifest.json')
+          freeze_path = Path('artifacts/football/nfl_source_freeze_attestation.json')
           if not model_path.is_file():
               raise SystemExit('NFL_M2_MODEL_ARTIFACT_MISSING_AFTER_FIT')
           if not manifest_path.is_file():
               raise SystemExit('NFL_SOURCE_MANIFEST_MISSING_AFTER_FIT')
+          if not freeze_path.is_file():
+              raise SystemExit('NFL_SOURCE_FREEZE_ATTESTATION_MISSING_AFTER_FIT')
           manifest = json.loads(manifest_path.read_text())
+          freeze = json.loads(freeze_path.read_text())
+          if manifest.get('schema_version') != 2:
+              raise SystemExit('NFL_SOURCE_MANIFEST_NOT_FROZEN_V2')
+          if freeze.get('bundle_upgrade_status') != 'PASS':
+              raise SystemExit('NFL_SOURCE_FREEZE_BUNDLE_UPGRADE_NOT_PASS')
+          if freeze.get('v2_source_manifest_sha256') != manifest.get('manifest_sha256'):
+              raise SystemExit('NFL_SOURCE_FREEZE_MANIFEST_BINDING_MISMATCH')
           payload = json.loads(model_path.read_text())
           model = load_nfl_m2_model_artifact(
               payload,
@@ -167,6 +182,7 @@ jobs:
           for artifact in \
             nfl_production_validation.json \
             nfl_source_manifest.json \
+            nfl_source_freeze_attestation.json \
             nfl_m2_model.json \
             nfl_environment_coverage.json \
             nfl_starting_qb_coverage.json; do
@@ -178,7 +194,9 @@ jobs:
         env:
           TZ: Pacific/Kiritimati
         run: >-
-          python scripts/run_nfl_production_validation.py
+          python scripts/run_nfl_production_validation_frozen.py
+          --source-contract config/nfl_promotion_source_freeze_v1.json
+          --freeze-attestation-out artifacts/football/nfl_source_freeze_attestation.json
           --schedule-file artifacts/football/sources/games.csv
           --pbp-dir artifacts/football/sources/pbp
           --participation-dir artifacts/football/sources/participation
@@ -208,6 +226,7 @@ jobs:
           --identity-artifact nfl_production_validation.json
           --artifact nfl_production_validation.json
           --artifact nfl_source_manifest.json
+          --artifact nfl_source_freeze_attestation.json
           --artifact nfl_m2_model.json
           --artifact nfl_environment_coverage.json
           --artifact nfl_starting_qb_coverage.json
@@ -223,6 +242,7 @@ jobs:
             artifacts/football/determinism/ci_attempt_001/*.json
             artifacts/football/nfl_production_validation.json
             artifacts/football/nfl_source_manifest.json
+            artifacts/football/nfl_source_freeze_attestation.json
             artifacts/football/nfl_m2_model.json
             artifacts/football/nfl_environment_coverage.json
             artifacts/football/nfl_starting_qb_coverage.json
@@ -324,6 +344,8 @@ jobs:
           manifest = json.loads(Path('artifacts/football/nfl_source_manifest.json').read_text())
           expected_source = manifest['manifest_sha256']
           expected_git = os.environ['EVIDENCE_GIT_SHA'].lower()
+          if manifest.get('schema_version') != 2:
+              raise SystemExit('NFL_EVIDENCE_SOURCE_MANIFEST_NOT_FROZEN_V2')
           if history['model_id'] != PRODUCTION_NFL_M2_MODEL_ID:
               raise SystemExit('NFL_EVIDENCE_MODEL_ID_MISMATCH')
           if history['feature_contract'] != NFL_M2_FEATURE_CONTRACT:
@@ -348,22 +370,29 @@ jobs:
           import hashlib, json, os
           from pathlib import Path
           source = json.loads(Path('artifacts/football/nfl_source_manifest.json').read_text())
+          freeze = json.loads(Path('artifacts/football/nfl_source_freeze_attestation.json').read_text())
           paths = sorted(Path('artifacts/football').glob('*.json'))
           payload = {
-              'schema_version': 2,
+              'schema_version': 3,
               'git_sha': os.environ['EVIDENCE_GIT_SHA'].lower(),
               'source_manifest_sha256': source['manifest_sha256'],
+              'source_contract_sha256': source['source_contract_sha256'],
+              'source_freeze_attestation_status': freeze.get('bundle_upgrade_status'),
               'ci_attestation_state': 'PRE_CI_WORKFLOW_CANNOT_SELF_ATTEST',
               'artifacts': [
                   {'path': p.name, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()}
                   for p in paths
               ],
           }
+          if payload['source_freeze_attestation_status'] != 'PASS':
+              raise SystemExit('NFL_SOURCE_FREEZE_ATTESTATION_NOT_PASS')
           names = {row['path'] for row in payload['artifacts']}
           if 'nfl_m2_model.json' not in names:
               raise SystemExit('NFL_M2_MODEL_ARTIFACT_NOT_MANIFESTED')
           if 'nfl_m2_determinism_report.json' not in names:
               raise SystemExit('NFL_M2_DETERMINISM_REPORT_NOT_MANIFESTED')
+          if 'nfl_source_freeze_attestation.json' not in names:
+              raise SystemExit('NFL_SOURCE_FREEZE_ATTESTATION_NOT_MANIFESTED')
           Path('artifacts/football/nfl_promotion_evidence_manifest.json').write_text(
               json.dumps(payload, indent=2, sort_keys=True) + '\n'
           )
