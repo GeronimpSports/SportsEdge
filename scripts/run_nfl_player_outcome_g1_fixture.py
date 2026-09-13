@@ -2,6 +2,16 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+import sys
+
+# When this file is executed directly (``python scripts/...py``), Python puts the
+# scripts directory—not the repository root—at sys.path[0]. Add the repository
+# root explicitly so the fixture exercises the checked-out SportsEdge package in
+# the same deterministic way on hosted runners and local shells.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from sportsedge.sports.nfl.player_outcomes_g1_validation import chronological_receptions_readout
 
