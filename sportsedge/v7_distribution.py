@@ -5,10 +5,10 @@ from math import exp, isfinite
 import random
 from typing import Any
 
-from .identity_rng import candidate_rng
+from .identity_rng import candidate_rng, validate_build_hash
 from .source_lineage import canonical_json_sha256
 
-V7_DISTRIBUTION_VERSION = "mlb_v7_distribution_v2_candidate"
+V7_DISTRIBUTION_VERSION = "mlb_v7_distribution_v3_rng_provenance"
 FIRST_INNING_MODEL_VERSION = "mlb_first_inning_nb_v1_candidate"
 DEFAULT_FIRST_INNING_SHARE = 0.118
 DEFAULT_FIRST_INNING_DISPERSION_R = 0.35
@@ -24,6 +24,7 @@ class GameDistribution:
     simulations: int
     seed: int | None
     seed_policy: str
+    rng_identity_sha256: str | None
     away_mean_runs: float
     home_mean_runs: float
     away_win_probability: float
@@ -160,14 +161,17 @@ def simulate_game_distribution(
     if build_hash is not None and seed is not None:
         raise V7DistributionError("provide build_hash or seed, not both")
     explicit_seed: int | None
+    rng_identity_sha256: str | None
     if build_hash is not None:
-        rng = candidate_rng(build_hash)
+        rng_identity_sha256 = validate_build_hash(build_hash)
+        rng = candidate_rng(rng_identity_sha256)
         seed_policy = "identity_sha256_256bit"
         explicit_seed = None
     elif seed is not None:
         explicit_seed = int(seed)
         rng = random.Random(explicit_seed)
         seed_policy = "explicit_test_seed"
+        rng_identity_sha256 = None
     else:
         raise V7DistributionError("identity-bound build_hash required when explicit test seed is absent")
 
@@ -228,6 +232,7 @@ def simulate_game_distribution(
         "simulations": simulations,
         "seed": explicit_seed,
         "seed_policy": seed_policy,
+        "rng_identity_sha256": rng_identity_sha256,
         "away_mean_runs": away_sum / simulations,
         "home_mean_runs": home_sum / simulations,
         "away_win_probability": away_wins / simulations,
