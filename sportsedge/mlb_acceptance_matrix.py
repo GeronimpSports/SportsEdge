@@ -7,6 +7,7 @@ validation-evidence registries at runtime.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 from typing import Any, Mapping
@@ -77,6 +78,74 @@ def _family_index(matrix: Mapping[str, Any]) -> tuple[dict[str, str], dict[str, 
     return index, normalized
 
 
+def _parse_utc(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _sha256_like(value: Any) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return True
+
+
+def _historical_pit_pass(raw: Any) -> bool:
+    """Require timestamp/provenance binding for historical PIT evidence.
+
+    A bare PASS label is never enough. The observation must be source-hash bound,
+    demonstrably available no later than the decision time, explicitly non-retroactive,
+    and complete for every input class the evidence record declares as required. This
+    lets market-specific protocols require lineup and/or starting-pitcher binding without
+    pretending every MLB market consumes identical inputs.
+    """
+    if not isinstance(raw, Mapping) or str(raw.get("status", "")).upper() != "PASS":
+        return False
+    binding = raw.get("pit_binding")
+    if not isinstance(binding, Mapping):
+        return False
+    observed_at = _parse_utc(binding.get("observed_at_utc"))
+    decision_at = _parse_utc(binding.get("decision_at_utc"))
+    if observed_at is None or decision_at is None or observed_at > decision_at:
+        return False
+    if binding.get("retroactive_point_in_time_claim") is not False:
+        return False
+    if not _sha256_like(binding.get("source_snapshot_sha256")):
+        return False
+
+    required = binding.get("required_input_classes", [])
+    bound_inputs = binding.get("bound_inputs", {})
+    if not isinstance(required, list) or not isinstance(bound_inputs, Mapping):
+        return False
+    for item in required:
+        name = str(item)
+        row = bound_inputs.get(name)
+        if not name or not isinstance(row, Mapping):
+            return False
+        row_observed = _parse_utc(row.get("observed_at_utc"))
+        if row_observed is None or row_observed > decision_at:
+            return False
+        if not str(row.get("identity", "")).strip():
+            return False
+        row_hash = row.get("source_snapshot_sha256", binding.get("source_snapshot_sha256"))
+        if not _sha256_like(row_hash):
+            return False
+    return True
+
+
 def build_acceptance_matrix(
     *,
     matrix_path: str | Path = DEFAULT_MATRIX,
@@ -145,11 +214,16 @@ def build_acceptance_matrix(
         gate_status: dict[str, str] = {}
         missing_gates: list[str] = []
         for gate in required_gates:
+            gate_name = str(gate)
             raw = val.get(gate)
-            status = str(raw.get("status", "MISSING") if isinstance(raw, Mapping) else raw or "MISSING").upper()
-            gate_status[str(gate)] = status
+            if gate_name == "historical_point_in_time":
+                raw_status = str(raw.get("status", "MISSING") if isinstance(raw, Mapping) else raw or "MISSING").upper()
+                status = "PASS" if _historical_pit_pass(raw) else ("INVALID_PIT_BINDING" if raw_status == "PASS" else raw_status)
+            else:
+                status = str(raw.get("status", "MISSING") if isinstance(raw, Mapping) else raw or "MISSING").upper()
+            gate_status[gate_name] = status
             if status != "PASS":
-                missing_gates.append(str(gate))
+                missing_gates.append(gate_name)
 
         behavioral_status = str(beh.get("status", "UNVERIFIED")).upper()
         realization_status = str(real.get("status", "UNVERIFIED")).upper()
