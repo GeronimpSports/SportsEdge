@@ -10,7 +10,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
-from scripts import capture_closing_line_archive as v1
+try:
+    from scripts import capture_closing_line_archive as v1
+except ModuleNotFoundError:  # direct execution: python scripts/capture_closing_line_archive_v2.py
+    import capture_closing_line_archive as v1
 
 ArchiveError = v1.ArchiveError
 _parse_ts = v1._parse_ts
