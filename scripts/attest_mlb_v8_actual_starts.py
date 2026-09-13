@@ -70,7 +70,19 @@ def _match_fixture(fixture: dict, cache: dict[str, tuple[bytes, list[dict]]]):
     return next(iter(unique.items()))
 
 
-def _attest(fixture_path: Path, fixture: dict, game_pk: int, schedule_raw: bytes) -> dict | None:
+def _persist_raw(root: Path, fixture_id: str, name: str, raw: bytes) -> str:
+    raw_dir = root / "actual_starts" / "raw" / fixture_id
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    target = raw_dir / name
+    if target.exists():
+        if target.read_bytes() != raw:
+            raise RuntimeError(f"IMMUTABLE_RAW_SOURCE_MISMATCH:{target.as_posix()}")
+    else:
+        target.write_bytes(raw)
+    return target.relative_to(root).as_posix()
+
+
+def _attest(root: Path, fixture_path: Path, fixture: dict, game_pk: int, schedule_raw: bytes) -> dict | None:
     feed_raw = _get(f"https://statsapi.mlb.com/api/v1.1/game/{game_pk}/feed/live")
     feed = json.loads(feed_raw)
     plays = feed.get("liveData", {}).get("plays", {}).get("allPlays", [])
@@ -80,12 +92,15 @@ def _attest(fixture_path: Path, fixture: dict, game_pk: int, schedule_raw: bytes
     if not first_play:
         return None
     fixture_raw = fixture_path.read_bytes()
+    fixture_id = str(fixture.get("fixtureId"))
+    schedule_path = _persist_raw(root, fixture_id, "schedule.json", schedule_raw)
+    feed_path = _persist_raw(root, fixture_id, "game_feed.json", feed_raw)
     return {
         "schema": SCHEMA,
         "evidence_class": "NOT_EVIDENCE_ADJUDICATION_ONLY",
         "promotion_authority": False,
         "retroactive_point_in_time_claim": False,
-        "fixture_id": str(fixture.get("fixtureId")),
+        "fixture_id": fixture_id,
         "provider_scheduled_start_utc": _parse(fixture["startTime"]).isoformat(),
         "actual_first_play_utc": _parse(first_play).isoformat(),
         "observed_at_utc": datetime.now(UTC).isoformat(),
@@ -93,7 +108,9 @@ def _attest(fixture_path: Path, fixture: dict, game_pk: int, schedule_raw: bytes
         "source_event_id": str(game_pk),
         "identity_method": "UNIQUE_EXACT_NORMALIZED_TEAM_PAIR_WITHIN_DATE_PLUS_MINUS_1",
         "fixture_sha256": _sha(fixture_raw),
+        "schedule_payload_path": schedule_path,
         "schedule_payload_sha256": _sha(schedule_raw),
+        "game_feed_payload_path": feed_path,
         "game_feed_payload_sha256": _sha(feed_raw),
     }
 
@@ -117,7 +134,7 @@ def run(root: Path) -> dict:
         if matched is None:
             identity_blocked += 1
             continue
-        att = _attest(fixture_path, fixture, matched[0], matched[1])
+        att = _attest(root, fixture_path, fixture, matched[0], matched[1])
         if att is None:
             no_first_play += 1
             continue
@@ -129,6 +146,7 @@ def run(root: Path) -> dict:
         "already_attested": existing,
         "identity_blocked": identity_blocked,
         "no_first_play": no_first_play,
+        "raw_source_payloads_persisted": True,
         "promotion_authority": False,
     }
 
@@ -137,7 +155,7 @@ def self_test() -> int:
     assert _norm_team("St. Louis Cardinals") == "stlouiscardinals"
     assert _norm_team("Kansas City Royals") == "kansascityroyals"
     assert _parse("2026-06-05T19:10:00Z").tzinfo is not None
-    print(json.dumps({"status": "SELF_TEST_OK", "promotion_authority": False}))
+    print(json.dumps({"status": "SELF_TEST_OK", "raw_source_payloads_persisted": True, "promotion_authority": False}))
     return 0
 
 
