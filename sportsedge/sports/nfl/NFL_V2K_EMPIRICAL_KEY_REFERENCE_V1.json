@@ -1,9 +1,14 @@
 {
   "schema": "NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1",
-  "status": "BLOCKED_REFERENCE_NOT_BUILT",
-  "authority": "NONE",
-  "purpose": "Independent signed historical margin-mass reference for V2K key-number validation.",
-  "required_signed_keys": [-7, -3, 3, 7],
+  "status": "FROZEN_READY",
+  "authority": "REFERENCE_ONLY_NO_MODEL_P_NO_PROMOTION_NO_STAKING",
+  "purpose": "Independent signed historical final-margin reference for V2K key-number validation. Built before any untouched V2K readout.",
+  "required_signed_keys": [
+    -7,
+    -3,
+    3,
+    7
+  ],
   "absolute_mass_tolerance": 0.005,
   "source_requirements": {
     "real_historical_games_only": true,
@@ -22,18 +27,77 @@
     "built_before_any_untouched_v2k_readout": true,
     "immutable_after_untouched_readout": true
   },
-  "reference": {
-    "season_scope": null,
-    "game_count": null,
-    "raw_source_sha256": null,
-    "builder_code_sha256": null,
-    "source_manifest_sha256": null,
-    "signed_margin_mass": {
-      "-7": null,
-      "-3": null,
-      "3": null,
-      "7": null
-    }
+  "source_manifest": {
+    "dataset_id": "nflverse/nfldata games.csv",
+    "dataset_version": "dffc0c00a5a2e6b87f4354a23cd213a617149971",
+    "repository": "nflverse/nfldata",
+    "path": "data/games.csv",
+    "url": "https://raw.githubusercontent.com/nflverse/nfldata/dffc0c00a5a2e6b87f4354a23cd213a617149971/data/games.csv",
+    "season_scope": {
+      "start": 2002,
+      "end": 2025,
+      "inclusive": true,
+      "game_types": [
+        "REG",
+        "WC",
+        "DIV",
+        "CON",
+        "SB"
+      ],
+      "completed_finals_only": true
+    },
+    "sample_size": 6499,
+    "signed_margin_convention": "home_score - away_score; positive means the schedule-designated home team finished ahead",
+    "neutral_site_assignment": "neutral-site games are included; sign follows nflverse home_team/away_team designation rather than inferred venue ownership",
+    "overtime_rule": "official final score is used, including all overtime scoring; regulation-only margins are not reconstructed",
+    "sportsbook_fields_used": [],
+    "v2k_outputs_used": [],
+    "excluded_unplayed_rows": 0,
+    "neutral_site_game_count": 91,
+    "included_game_type_counts": {
+      "CON": 48,
+      "DIV": 96,
+      "REG": 6223,
+      "SB": 24,
+      "WC": 108
+    },
+    "raw_source_sha256": "5149f94415e2347cc8fb585a3f67c4493837d9fe4b210e1dc1e9d2052a701208",
+    "builder_code_sha256": "3c0e0aebc1d76348b5997ffc439a7bd3135625a8b64e578541e8adcb3a4360fe",
+    "generated_at_utc": "2026-09-13T15:20:00Z"
   },
-  "block_reason": "Real historical source bytes and the frozen signed-key table have not yet been bound on main. Uploaded demonstration values are not admissible evidence."
+  "reference": {
+    "season_scope": {
+      "start": 2002,
+      "end": 2025,
+      "inclusive": true,
+      "game_types": [
+        "REG",
+        "WC",
+        "DIV",
+        "CON",
+        "SB"
+      ],
+      "completed_finals_only": true
+    },
+    "game_count": 6499,
+    "raw_source_sha256": "5149f94415e2347cc8fb585a3f67c4493837d9fe4b210e1dc1e9d2052a701208",
+    "builder_code_sha256": "3c0e0aebc1d76348b5997ffc439a7bd3135625a8b64e578541e8adcb3a4360fe",
+    "source_manifest_sha256": "89a18a7efbfacbbcf4d1a4f1e51ce23e39383faa265959cfefb0b869d7ece411",
+    "full_signed_margin_distribution_sha256": "439f1267f33fb1aa6f1714b1d88ef3a0e73771ee7db915b205c5da114b543373",
+    "signed_margin_counts": {
+      "-7": 273,
+      "-3": 448,
+      "3": 523,
+      "7": 313
+    },
+    "signed_margin_mass": {
+      "-7": 0.042006462533,
+      "-3": 0.068933682105,
+      "3": 0.080473919064,
+      "7": 0.048161255578
+    },
+    "absolute_margin_3_mass": 0.149407601169,
+    "absolute_margin_7_mass": 0.09016771811
+  },
+  "block_reason": null
 }
