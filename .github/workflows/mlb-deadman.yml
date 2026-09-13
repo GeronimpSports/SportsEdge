@@ -10,24 +10,35 @@ permissions:
   contents: read
 
 jobs:
-  verify-auto-mlb-heartbeat:
+  verify-and-rescue:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Verify auto-mlb has completed successfully and recently
+
+      - name: Verify auto-mlb heartbeat
+        id: heartbeat
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           MAX_AGE_MINUTES: '45'
-        run: python scripts/check_mlb_auto_heartbeat.py
+        shell: bash
+        run: |
+          set +e
+          python scripts/check_mlb_auto_heartbeat.py
+          rc=$?
+          set -e
+          if [ "$rc" -eq 1 ]; then
+            echo "dispatch_rescue=true" >> "$GITHUB_OUTPUT"
+          else
+            # rc=0 means healthy. rc=2 means the checker could not establish a
+            # trustworthy heartbeat state (for example API/parse failure). Keep
+            # that fail-closed and do not spend/dispatch archive rescue blindly.
+            echo "dispatch_rescue=false" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
 
-  archive-rescue-dispatch:
-    # Manual-only and deliberately independent from the verifier. An operator
-    # invoking this parked dead-man explicitly is requesting the archive rescue;
-    # heartbeat uncertainty must not silently convert into a healthy verdict.
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch archive failover workflow
+      - name: Dispatch archive failover only for explicit manual rescue
+        if: steps.heartbeat.outputs.dispatch_rescue == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -36,3 +47,7 @@ jobs:
           set -euo pipefail
           gh workflow run archive-mlb-game-odds-failover.yml --ref main
           echo 'DEADMAN_DISPATCHED_ARCHIVE_FAILOVER'
+
+      - name: Record healthy or unknown no-dispatch state
+        if: steps.heartbeat.outputs.dispatch_rescue != 'true'
+        run: echo 'DEADMAN_NO_RESCUE_DISPATCH'
