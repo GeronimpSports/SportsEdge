@@ -31,6 +31,28 @@ def test_unseen_team_falls_back_to_league_mean():
     assert abs(sum(x.outcome_probs.values())-1.0)<1e-12
     assert abs(x.drives_mean-fit['base_params']['drives_mean'])<1e-12
 
+def test_teams_at_or_above_200_drives_are_unshrunk():
+    fit=fit_pit(rows(),prediction_cutoff_utc='2026-01-01T00:00:00Z',source_manifest_sha256=SRC,feature_policy_sha256=POL,code_sha=CODE)
+    # A has 280 drives with 100 scoring drives; C has exactly 200 with 40 scoring drives.
+    assert fit['offense_strength']['A']['drives'] == 280
+    assert fit['offense_strength']['A']['scoring_rate'] == pytest.approx(100/280)
+    assert fit['offense_strength']['C']['drives'] == 200
+    assert fit['offense_strength']['C']['scoring_rate'] == pytest.approx(40/200)
+    assert fit['offense_pace_strength']['A']['drives_per_game'] == pytest.approx(14.0)
+    assert fit['offense_pace_strength']['C']['drives_per_game'] == pytest.approx(10.0)
+
+def test_team_below_200_drives_remains_shrunk_toward_league():
+    sparse=[]
+    for i in range(50):
+        sparse.append(DriveRow(f's{i//10}', '2025-01-01T00:00:00Z', 'SPARSE', 'X', 25.0, 'TD' if i < 25 else 'PUNT_OTHER'))
+    for i in range(250):
+        sparse.append(DriveRow(f'b{i//10}', '2025-01-01T00:00:00Z', 'BASE', 'Y', 25.0, 'TD' if i < 25 else 'PUNT_OTHER'))
+    fit=fit_pit(sparse,prediction_cutoff_utc='2026-01-01T00:00:00Z',source_manifest_sha256=SRC,feature_policy_sha256=POL,code_sha=CODE)
+    raw=0.5
+    league=fit['league_scoring_rate']
+    shrunk=fit['offense_strength']['SPARSE']['scoring_rate']
+    assert min(raw,league) < shrunk < max(raw,league)
+
 def test_future_row_blocks():
     bad=[DriveRow('g','2026-01-01T00:00:00Z','A','B',25.0,'TD')]
     with pytest.raises(ValueError,match='PIT violation'):
