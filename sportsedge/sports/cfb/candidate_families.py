@@ -1,8 +1,9 @@
-"""Executable preregistered CFB candidate-family primitives.
+"""Prospectively frozen CFB candidate-family primitives.
 
-This module contains no evaluation results and consumes no model-selection attempt.
-All four frozen families are specified prospectively. Candidate constants are frozen
-in code and must match preregistration before evaluation.
+No evaluation results appear here and no model-selection attempt is consumed.
+The baseline is executable today. The other three family mechanics/constants are
+specified before evaluation but remain outside IMPLEMENTED_FAMILIES until their
+historical-enrichment and evaluator paths are wired and tested end-to-end.
 """
 from __future__ import annotations
 
@@ -18,12 +19,13 @@ FAMILY_GAMES_IN_SAMPLE_FEATURE = "GAMES_IN_SAMPLE_FEATURE"
 RELIABILITY_SWITCH_MIN_GAMES = 3
 PRIOR_BLEND_FULL_CURRENT_GAMES = 4
 
-IMPLEMENTED_FAMILIES = frozenset({
+SPECIFIED_FAMILIES = frozenset({
     FAMILY_EQUAL_WEIGHT_HARD_SWITCH,
     FAMILY_RELIABILITY_WEIGHTED_HARD_SWITCH,
     FAMILY_PRIOR_CURRENT_BLEND,
     FAMILY_GAMES_IN_SAMPLE_FEATURE,
 })
+IMPLEMENTED_FAMILIES = frozenset({FAMILY_EQUAL_WEIGHT_HARD_SWITCH})
 
 TEAM_METRIC_KEYS = (
     "off_ppa_rush", "off_ppa_dropback", "def_ppa_rush_allowed", "def_ppa_dropback_allowed",
@@ -31,12 +33,11 @@ TEAM_METRIC_KEYS = (
     "passing_down_success_rate", "eckel_rate", "points_per_eckel", "points_per_drive",
     "net_field_position", "explosive_rate",
 )
-
 BANNED_MARKET_KEYS = frozenset({
-    "spread", "spread_line", "total", "total_line", "line", "price",
-    "american_odds", "decimal_odds", "implied_probability", "implied_prob",
-    "market_probability", "novig_prob", "no_vig_prob", "book", "sportsbook",
-    "closing_line", "closing_price", "home_moneyline", "away_moneyline", "odds",
+    "spread", "spread_line", "total", "total_line", "line", "price", "american_odds",
+    "decimal_odds", "implied_probability", "implied_prob", "market_probability",
+    "novig_prob", "no_vig_prob", "book", "sportsbook", "closing_line", "closing_price",
+    "home_moneyline", "away_moneyline", "odds",
 })
 
 class CFBCandidateFamilyError(ValueError):
@@ -91,7 +92,7 @@ def _validate_prior(metrics: Mapping[str, Any], *, season: int, side: str) -> No
     except (KeyError, TypeError, ValueError) as exc:
         raise CFBCandidateFamilyError(f"CFB_CANDIDATE_{side.upper()}_PRIOR_IDENTITY_INVALID") from exc
     if str(metrics.get("sample_source") or "").upper() != "PRIOR_SEASON_FALLBACK" or metric_season != season - 1:
-        raise CFBCandidateFamilyError(f"CFB_CANDIDATE_PRIOR_SEASON_INVALID:{side}")
+        raise CFBCandidateFamilyError(f"CFB_CANDIDATE_WEEK1_PRIOR_SEASON_SWITCH_INVALID:{side}")
 
 
 def _validate_current(metrics: Mapping[str, Any], *, season: int, week: int, side: str) -> None:
@@ -101,7 +102,7 @@ def _validate_current(metrics: Mapping[str, Any], *, season: int, week: int, sid
         raise CFBCandidateFamilyError(f"CFB_CANDIDATE_{side.upper()}_CURRENT_IDENTITY_INVALID") from exc
     if (str(metrics.get("sample_source") or "").upper() != "CURRENT_SEASON_PRIOR_WEEKS"
             or metric_season != season or through_week != week - 1):
-        raise CFBCandidateFamilyError(f"CFB_CANDIDATE_CURRENT_SEASON_INVALID:{side}")
+        raise CFBCandidateFamilyError(f"CFB_CANDIDATE_CURRENT_SEASON_SWITCH_INVALID:{side}")
 
 
 def _games(row: Mapping[str, Any], side: str) -> int:
@@ -146,7 +147,7 @@ def _sources(row: Mapping[str, Any], side: str, season: int, week: int):
 
 
 def materialize_reliability_weighted_hard_switch(row: Mapping[str, Any]) -> dict[str, Any]:
-    """Prior metrics until >=3 current-season games; then hard switch to current."""
+    """Frozen future mechanic: prior metrics until >=3 current-season games."""
     _clean(row)
     season, week = _season_week(row)
     out = deepcopy(dict(row))
@@ -158,7 +159,7 @@ def materialize_reliability_weighted_hard_switch(row: Mapping[str, Any]) -> dict
 
 
 def materialize_prior_current_blend(row: Mapping[str, Any]) -> dict[str, Any]:
-    """Linear prior/current blend; current weight reaches 1.0 after four games."""
+    """Frozen future mechanic: linear blend reaching full current weight after four games."""
     _clean(row)
     season, week = _season_week(row)
     out = deepcopy(dict(row))
@@ -179,6 +180,7 @@ def materialize_prior_current_blend(row: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def materialize_games_in_sample_feature(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Frozen future mechanic: expose home/away games-in-sample as model features."""
     out = materialize_equal_weight_hard_switch(row)
     out["candidate_extra_features"] = {
         "home_games_in_sample": float(_games(out, "home")),
@@ -187,39 +189,21 @@ def materialize_games_in_sample_feature(row: Mapping[str, Any]) -> dict[str, Any
     return out
 
 
-def candidate_extra_feature_names(family: str) -> tuple[str, ...]:
-    if family == FAMILY_GAMES_IN_SAMPLE_FEATURE:
-        return ("home_games_in_sample", "away_games_in_sample")
-    if family in IMPLEMENTED_FAMILIES:
-        return ()
-    raise CFBCandidateFamilyError(f"CFB_CANDIDATE_FAMILY_UNIMPLEMENTED:{family}")
-
-
 def materialize_candidate_row(family: str, row: Mapping[str, Any], *, constants: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    supplied = dict(constants or {})
     if family == FAMILY_EQUAL_WEIGHT_HARD_SWITCH:
-        if supplied:
+        if constants not in (None, {}):
             raise CFBCandidateFamilyError("CFB_EQUAL_WEIGHT_BASELINE_CONSTANTS_PROHIBITED")
         return materialize_equal_weight_hard_switch(row)
-    if family == FAMILY_RELIABILITY_WEIGHTED_HARD_SWITCH:
-        if supplied != {"min_current_games": RELIABILITY_SWITCH_MIN_GAMES}:
-            raise CFBCandidateFamilyError("CFB_RELIABILITY_SWITCH_CONSTANTS_MISMATCH")
-        return materialize_reliability_weighted_hard_switch(row)
-    if family == FAMILY_PRIOR_CURRENT_BLEND:
-        if supplied != {"full_current_games": PRIOR_BLEND_FULL_CURRENT_GAMES}:
-            raise CFBCandidateFamilyError("CFB_PRIOR_CURRENT_BLEND_CONSTANTS_MISMATCH")
-        return materialize_prior_current_blend(row)
-    if family == FAMILY_GAMES_IN_SAMPLE_FEATURE:
-        if supplied:
-            raise CFBCandidateFamilyError("CFB_GAMES_IN_SAMPLE_CONSTANTS_PROHIBITED")
-        return materialize_games_in_sample_feature(row)
+    if family not in IMPLEMENTED_FAMILIES:
+        raise CFBCandidateFamilyError(f"CFB_CANDIDATE_FAMILY_UNIMPLEMENTED:{family}")
     raise CFBCandidateFamilyError(f"CFB_CANDIDATE_FAMILY_UNIMPLEMENTED:{family}")
 
 
 __all__ = [
     "CFBCandidateFamilyError", "FAMILY_EQUAL_WEIGHT_HARD_SWITCH",
     "FAMILY_RELIABILITY_WEIGHTED_HARD_SWITCH", "FAMILY_PRIOR_CURRENT_BLEND",
-    "FAMILY_GAMES_IN_SAMPLE_FEATURE", "IMPLEMENTED_FAMILIES", "TEAM_METRIC_KEYS",
-    "RELIABILITY_SWITCH_MIN_GAMES", "PRIOR_BLEND_FULL_CURRENT_GAMES",
-    "candidate_extra_feature_names", "materialize_candidate_row",
+    "FAMILY_GAMES_IN_SAMPLE_FEATURE", "SPECIFIED_FAMILIES", "IMPLEMENTED_FAMILIES",
+    "TEAM_METRIC_KEYS", "RELIABILITY_SWITCH_MIN_GAMES", "PRIOR_BLEND_FULL_CURRENT_GAMES",
+    "materialize_candidate_row", "materialize_reliability_weighted_hard_switch",
+    "materialize_prior_current_blend", "materialize_games_in_sample_feature",
 ]
