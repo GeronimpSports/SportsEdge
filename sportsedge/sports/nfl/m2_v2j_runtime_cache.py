@@ -81,6 +81,41 @@ def _condition_from_prepared(
     return {points: prob / total for points, prob in sorted(out.items())}
 
 
+def _repeat_convolution_ladder_exact(
+    base: Mapping[int, float],
+    counts: tuple[int, ...],
+) -> dict[int, dict[int, float]]:
+    """Build all requested repeated convolutions with the frozen recurrence once.
+
+    ``_repeat_convolution(base, n)`` starts at ``{0: 1.0}`` and applies the same
+    recurrence ``n`` times. Reusing the exact intermediate PMF at count ``n-1``
+    therefore produces the identical count-``n`` dict, insertion order and float
+    operation sequence while avoiding restart work for every requested count.
+    No possession-regime row is aggregated or reordered by this helper.
+    """
+    needed = tuple(sorted({int(value) for value in counts}))
+    if any(value < 0 for value in needed):
+        raise ValueError("NFL_M2_V2I_NEGATIVE_POSSESSION_COUNT")
+    if not needed:
+        return {}
+    pmf: dict[int, float] = {0: 1.0}
+    output: dict[int, dict[int, float]] = {}
+    if 0 in needed:
+        output[0] = pmf
+    maximum = needed[-1]
+    wanted = set(needed)
+    for count in range(1, maximum + 1):
+        nxt: dict[int, float] = {}
+        for prior_score, prior_prob in pmf.items():
+            for points, probability in base.items():
+                score = prior_score + int(points)
+                nxt[score] = nxt.get(score, 0.0) + prior_prob * float(probability)
+        pmf = nxt
+        if count in wanted:
+            output[count] = pmf
+    return output
+
+
 def market_readout_exact_cached(model: Any, row: dict[str, Any]) -> dict[str, Any]:
     """Return the V2J market readout while reusing exact deterministic work.
 
@@ -102,6 +137,8 @@ def market_readout_exact_cached(model: Any, row: dict[str, Any]) -> dict[str, An
     home_safety_p = _safety_probability(base, home, away)
     away_safety_p = _safety_probability(base, away, home)
     regimes = tuple(base.possession_regime)
+    home_drive_counts = tuple(sorted({int(home_drives) for home_drives, _, _ in regimes}))
+    away_drive_counts = tuple(sorted({int(away_drives) for _, away_drives, _ in regimes}))
 
     home_prepared = _prepare_conditioning(
         model,
@@ -135,17 +172,12 @@ def market_readout_exact_cached(model: Any, row: dict[str, Any]) -> dict[str, An
         home_drive = _condition_from_prepared(home_prepared, shared_environment=env)
         away_drive = _condition_from_prepared(away_prepared, shared_environment=env)
 
-        home_offense: dict[int, dict[int, float]] = {}
-        away_offense: dict[int, dict[int, float]] = {}
+        home_offense = _repeat_convolution_ladder_exact(home_drive, home_drive_counts)
+        away_offense = _repeat_convolution_ladder_exact(away_drive, away_drive_counts)
 
         for home_drives, away_drives, regime_weight in regimes:
             hd = int(home_drives)
             ad = int(away_drives)
-            if hd not in home_offense:
-                home_offense[hd] = _repeat_convolution(home_drive, hd)
-            if ad not in away_offense:
-                away_offense[ad] = _repeat_convolution(away_drive, ad)
-
             home_scores = _combine_pmfs(home_offense[hd], home_safety[ad])
             away_scores = _combine_pmfs(away_offense[ad], away_safety[hd])
             home_values = np.fromiter(home_scores.keys(), dtype=np.int64)
