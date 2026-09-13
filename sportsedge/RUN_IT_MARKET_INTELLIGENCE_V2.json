@@ -60,7 +60,10 @@
     "truth_gate_status": "BLOCKED_ALL_CFB_MARKETS",
     "forward_clock_started": false,
     "first_admissible_slate": "2026-09-19",
-    "pr_481_status": "HELD",
+    "pr_481_status": "CLOSED_UNMERGED_SUPERSEDED",
+    "pr_488_status": "CLOSED_UNMERGED_SUPERSEDED",
+    "current_forward_clv_pr": 493,
+    "current_forward_clv_pr_status": "OPEN_DRAFT_HELD",
     "rendered_text_must_equal_frozen_text": true
   }
 }
