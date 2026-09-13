@@ -54,6 +54,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          FREEZE_STATUS="$(jq -r '.status // "UNFROZEN"' config/nfl_m2_freeze.json)"
+          FREEZE_HASH="$(jq -r '.artifact_sha256 // empty' config/nfl_m2_freeze.json)"
+          if [[ "$FREEZE_STATUS" != 'FROZEN' || ! "$FREEZE_HASH" =~ ^[0-9a-f]{64}$ ]]; then
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            jq -n --arg status "$FREEZE_STATUS" \
+              '{state:"CURRENT_MAIN_MODEL_NOT_FROZEN",freeze_status:$status}' \
+              > artifacts/football/forward-run/release-status.json
+            exit 0
+          fi
           RUN_JSON="$(gh run list --repo "$GITHUB_REPOSITORY" \
             --workflow football-nfl-promotion-evidence.yml --branch main --event push \
             --status success --limit 100 --json databaseId,headSha,conclusion)"
@@ -79,6 +88,13 @@ jobs:
             exit 0
           fi
           ARTIFACT_SHA="$(sha256sum artifacts/football/model-release/nfl_m2_model.json | awk '{print $1}')"
+          if [[ "$ARTIFACT_SHA" != "$FREEZE_HASH" ]]; then
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            jq -n --arg sha "$MODEL_SHA" --arg actual "$ARTIFACT_SHA" --arg expected "$FREEZE_HASH" --argjson run "$RUN_ID" \
+              '{state:"LATEST_SUCCESSFUL_RELEASE_NOT_FROZEN_ARTIFACT",model_code_git_sha:$sha,workflow_run_id:$run,model_artifact_sha256:$actual,frozen_artifact_sha256:$expected}' \
+              > artifacts/football/forward-run/release-status.json
+            exit 0
+          fi
           echo 'available=true' >> "$GITHUB_OUTPUT"
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "model_sha=$MODEL_SHA" >> "$GITHUB_OUTPUT"
