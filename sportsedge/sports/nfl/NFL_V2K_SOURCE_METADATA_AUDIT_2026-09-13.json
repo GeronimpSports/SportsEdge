@@ -1,0 +1,29 @@
+{
+  "schema": "SPORTSEDGE_NFL_V2K_SOURCE_METADATA_AUDIT_V1",
+  "status": "PROVENANCE_GAP_CONFIRMED_NO_SHA256_DIGEST",
+  "provider": "nflverse/nflverse-data",
+  "release_id": 58152862,
+  "release_tag": "pbp",
+  "release_updated_at": "2026-09-12T12:50:51Z",
+  "observed_at_utc": "2026-09-13T13:30:00Z",
+  "canonical_asset_format": "play_by_play_{season}.parquet",
+  "assets": [
+    {"season": 2010, "asset_id": 250647294, "name": "play_by_play_2010.parquet", "state": "uploaded", "size_bytes": 19059048, "digest": null},
+    {"season": 2011, "asset_id": 250648401, "name": "play_by_play_2011.parquet", "state": "uploaded", "size_bytes": 19117830, "digest": null},
+    {"season": 2012, "asset_id": 250646435, "name": "play_by_play_2012.parquet", "state": "uploaded", "size_bytes": 19322039, "digest": null},
+    {"season": 2013, "asset_id": 188187297, "name": "play_by_play_2013.parquet", "state": "uploaded", "size_bytes": 19521610, "digest": null},
+    {"season": 2014, "asset_id": 188187302, "name": "play_by_play_2014.parquet", "state": "uploaded", "size_bytes": 19360792, "digest": null},
+    {"season": 2015, "asset_id": 250646456, "name": "play_by_play_2015.parquet", "state": "uploaded", "size_bytes": 19545842, "digest": null},
+    {"season": 2016, "asset_id": 250647177, "name": "play_by_play_2016.parquet", "state": "uploaded", "size_bytes": 19344382, "digest": null},
+    {"season": 2017, "asset_id": 250648728, "name": "play_by_play_2017.parquet", "state": "uploaded", "size_bytes": 19050401, "digest": null},
+    {"season": 2018, "asset_id": 250648497, "name": "play_by_play_2018.parquet", "state": "uploaded", "size_bytes": 19072097, "digest": null}
+  ],
+  "conclusion": "PROVIDER_METADATA_CANNOT_COMPLETE_2010_2018_SHA256_PROVENANCE",
+  "required_next_evidence": "DIRECT_DOWNLOADED_BYTE_SHA256",
+  "source_manifest_complete": false,
+  "readout_consumed": false,
+  "model_p_authority": false,
+  "promotion_authority": false,
+  "truth_gate_authority": false,
+  "official_authority": false
+}
