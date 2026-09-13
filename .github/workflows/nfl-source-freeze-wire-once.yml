@@ -1,0 +1,129 @@
+name: nfl-source-freeze-wire-once
+
+on:
+  push:
+    branches:
+      - hardening/nfl-source-freeze-v2-20260913
+    paths:
+      - '.github/workflows/nfl-source-freeze-wire-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: hardening/nfl-source-freeze-v2-20260913
+          fetch-depth: 0
+
+      - name: Patch promotion workflow exactly once
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/football-nfl-promotion-evidence.yml')
+          text = path.read_text()
+
+          compile_old = '''            sportsedge/sports/nfl/source_contract.py \\
+            sportsedge/sports/nfl/source_manifest.py \\
+'''
+          compile_new = '''            sportsedge/sports/nfl/source_contract.py \\
+            sportsedge/sports/nfl/source_manifest.py \\
+            scripts/materialize_nfl_frozen_sources.py \\
+'''
+          if 'scripts/materialize_nfl_frozen_sources.py \\' not in text:
+              if compile_old not in text:
+                  raise SystemExit('NFL_SOURCE_WIRE_COMPILE_ANCHOR_MISSING')
+              text = text.replace(compile_old, compile_new, 1)
+
+          old = '''      - name: Freeze public NFL production sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/football/sources/{pbp,participation,depth}
+
+          # Transport retries may repeat the same source request, but source
+          # identity is frozen separately by the checked-in SHA-256 contract.
+          fetch_source() {
+            local url="$1"
+            local output="$2"
+            curl --fail --location --silent --show-error \\
+              --retry 5 --retry-delay 2 --retry-all-errors \\
+              --connect-timeout 30 \\
+              "$url" -o "$output"
+          }
+
+          fetch_source \\
+            'https://raw.githubusercontent.com/nflverse/nfldata/33488cbcb33839efeb3776bf81673787d18a2bcf/data/games.csv' \\
+            artifacts/football/sources/games.csv
+          fetch_source \\
+            'https://raw.githubusercontent.com/greerreNFL/Stadiums/efa9543af50b01424754219fa0e4f3c7044ff198/data/team_stadiums.csv' \\
+            artifacts/football/sources/team_stadiums.csv
+          for season in $(seq 2016 2025); do
+            fetch_source \\
+              "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_${season}.csv.gz" \\
+              "artifacts/football/sources/pbp/play_by_play_${season}.csv.gz"
+            fetch_source \\
+              "https://github.com/nflverse/nflverse-data/releases/download/pbp_participation/pbp_participation_${season}.csv" \\
+              "artifacts/football/sources/participation/pbp_participation_${season}.csv"
+            fetch_source \\
+              "https://github.com/nflverse/nflverse-data/releases/download/depth_charts/depth_charts_${season}.csv" \\
+              "artifacts/football/sources/depth/depth_charts_${season}.csv"
+          done
+'''
+          new = '''      - name: Materialize SportsEdge-frozen NFL production sources
+        run: >-
+          python scripts/materialize_nfl_frozen_sources.py
+          --source-contract config/nfl_promotion_source_freeze_v1.json
+          --output-root artifacts/football/sources
+          --attestation-out artifacts/football/nfl_source_materialization_attestation.json
+'''
+          if 'Materialize SportsEdge-frozen NFL production sources' not in text:
+              if old not in text:
+                  raise SystemExit('NFL_SOURCE_WIRE_DOWNLOAD_BLOCK_ANCHOR_MISSING')
+              text = text.replace(old, new, 1)
+
+          starter_anchor = '''          --stadium-file artifacts/football/sources/team_stadiums.csv
+          --git-sha "$EVIDENCE_GIT_SHA"
+'''
+          starter_new = '''          --stadium-file artifacts/football/sources/team_stadiums.csv
+          --starter-override-file artifacts/football/sources/nfl_historical_starter_overrides.json
+          --git-sha "$EVIDENCE_GIT_SHA"
+'''
+          existing = text.count('--starter-override-file artifacts/football/sources/nfl_historical_starter_overrides.json')
+          if existing == 0:
+              count = text.count(starter_anchor)
+              if count != 2:
+                  raise SystemExit(f'NFL_SOURCE_WIRE_STARTER_ANCHOR_COUNT:{count}')
+              text = text.replace(starter_anchor, starter_new)
+          elif existing != 2:
+              raise SystemExit(f'NFL_SOURCE_WIRE_STARTER_ALREADY_COUNT:{existing}')
+
+          path.write_text(text)
+          PY
+
+      - name: Verify patch contract
+        run: |
+          grep -F 'Materialize SportsEdge-frozen NFL production sources' .github/workflows/football-nfl-promotion-evidence.yml
+          test "$(grep -Fc -- '--starter-override-file artifacts/football/sources/nfl_historical_starter_overrides.json' .github/workflows/football-nfl-promotion-evidence.yml)" -eq 2
+          test "$(grep -Fc 'scripts/materialize_nfl_frozen_sources.py' .github/workflows/football-nfl-promotion-evidence.yml)" -ge 2
+          if grep -Fq 'nflverse/nflverse-data/releases/download/pbp/' .github/workflows/football-nfl-promotion-evidence.yml; then
+            echo 'mutable nflverse PBP transport remains in promotion workflow' >&2
+            exit 1
+          fi
+
+      - name: Commit wired workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet -- .github/workflows/football-nfl-promotion-evidence.yml; then
+            echo 'promotion workflow already wired'
+            exit 0
+          fi
+          git add .github/workflows/football-nfl-promotion-evidence.yml
+          git commit -m 'ci(nfl): consume promotion inputs from frozen release store'
+          git push origin HEAD:hardening/nfl-source-freeze-v2-20260913
