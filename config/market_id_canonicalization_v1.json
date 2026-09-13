@@ -56,6 +56,13 @@
       "receptions": ["receptions"],
       "targets": ["targets"],
       "anytime_td": ["anytime_td"]
+    },
+    "pga": {
+      "outrights": ["outrights"],
+      "top_5": ["top_5"],
+      "top_10": ["top_10"],
+      "top_20": ["top_20"],
+      "make_cut": ["make_cut"]
     }
   }
 }
