@@ -6,6 +6,11 @@ NOT_EVIDENCE on every row. It cannot start or extend a promotion evidence
 clock and is never a substitute for FOOTBALL_FORWARD_CAPTURE_V2 or the MLB
 replay packages.
 
+A single paid fetch may satisfy multiple overlapping capture windows. Those
+window rows are labels over one physical observation and therefore share one
+capture_id and fetch_sha256. Provider commence_time remains only a scheduled
+start guard; every row records that guard and its known failure modes.
+
 Credit discipline: the per-sport event index (/v4/sports/{key}/events) does
 not consume an Odds API credit, so it is used as a free gate. The paid odds
 endpoint is called only for a sport that currently has at least one event
@@ -17,6 +22,7 @@ Exit codes: 0 = ran (captured or nothing due), 2 = failed closed.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -29,8 +35,13 @@ from typing import Any, Callable, Iterable, Mapping
 
 UTC = timezone.utc
 API_ROOT = "https://api.the-odds-api.com/v4"
-SCHEMA_VERSION = "CLOSING_LINE_ARCHIVE_ROW_V1"
+SCHEMA_VERSION = "CLOSING_LINE_ARCHIVE_ROW_V2"
 DEFAULT_POLICY_PATH = "config/closing_line_archive_policy_v1.json"
+START_GUARD_SCHEDULED = "SCHEDULED_COMMENCE_ONLY"
+START_GUARD_FAILURE_MODES = (
+    "ACTUAL_START_EARLIER_THAN_SCHEDULED_POST_START_ADMISSION_RISK",
+    "ACTUAL_START_LATER_THAN_SCHEDULED_PRESTART_DATA_LOSS_RISK",
+)
 
 KEY_ENV_VARS = (
     "SPORTSEDGE_ODDS_API_KEY",
@@ -139,19 +150,27 @@ def fetch_odds(sport_key: str, policy: Mapping[str, Any], keys: Iterable[str], o
     return [dict(item) for item in payload]
 
 
-def window_for(start: datetime, now: datetime, policy: Mapping[str, Any]) -> str | None:
+def windows_for(start: datetime, now: datetime, policy: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return every matching capture-window label in policy declaration order."""
     lead_minutes = (start - now).total_seconds() / 60.0
     if lead_minutes <= 0:
-        return None
+        return ()
+    matches: list[str] = []
     for name, bounds in policy["windows"].items():
         if bounds["min_minutes_before_start"] <= lead_minutes <= bounds["max_minutes_before_start"]:
-            return name
-    return None
+            matches.append(name)
+    return tuple(matches)
 
 
-def due_events(events: Iterable[Mapping[str, Any]], now: datetime, policy: Mapping[str, Any]) -> dict[str, str]:
-    """Map event_id -> window name for every event currently inside a window."""
-    due: dict[str, str] = {}
+def window_for(start: datetime, now: datetime, policy: Mapping[str, Any]) -> str | None:
+    """Compatibility helper returning the first matching window."""
+    matches = windows_for(start, now, policy)
+    return matches[0] if matches else None
+
+
+def due_events(events: Iterable[Mapping[str, Any]], now: datetime, policy: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:
+    """Map event_id -> all capture-window memberships currently satisfied."""
+    due: dict[str, tuple[str, ...]] = {}
     for event in events:
         event_id = str(event.get("id") or "").strip()
         if not event_id:
@@ -160,32 +179,66 @@ def due_events(events: Iterable[Mapping[str, Any]], now: datetime, policy: Mappi
             start = _parse_ts(event.get("commence_time"))
         except ArchiveError:
             continue
-        name = window_for(start, now, policy)
-        if name:
-            due[event_id] = name
+        memberships = windows_for(start, now, policy)
+        if memberships:
+            due[event_id] = memberships
     return due
+
+
+def _normalize_memberships(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,)
+    return tuple(str(item) for item in value)
+
+
+def _canonical_fetch_sha256(odds_payload: list[Mapping[str, Any]]) -> str:
+    body = json.dumps(
+        odds_payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(body).hexdigest()
+
+
+def _capture_id(sport_key: str, captured_at: str, fetch_sha256: str) -> str:
+    material = f"{sport_key}\n{captured_at}\n{fetch_sha256}".encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
 
 
 def build_rows(
     sport_key: str,
     odds_payload: Iterable[Mapping[str, Any]],
-    due: Mapping[str, str],
+    due: Mapping[str, Any],
     now: datetime,
     policy: Mapping[str, Any],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Return (rows, skipped). A one-sided market is skipped, never imputed."""
+    """Return rows plus skips; overlapping windows share one capture identity."""
     rows: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     captured_at = _iso(now)
+    payload = list(odds_payload)
+    fetch_sha256 = _canonical_fetch_sha256(payload)
+    capture_id = _capture_id(sport_key, captured_at, fetch_sha256)
 
-    for event in odds_payload:
+    for event in payload:
         event_id = str(event.get("id") or "").strip()
         if event_id not in due:
             continue
-        window = due[event_id]
+        memberships = _normalize_memberships(due[event_id])
         start = _parse_ts(event.get("commence_time"))
+        lead_minutes = (start - now).total_seconds() / 60.0
         if start <= now:
-            skipped.append({"event_id": event_id, "reason": "EVENT_ALREADY_STARTED"})
+            skipped.append(
+                {
+                    "event_id": event_id,
+                    "reason": "EVENT_ALREADY_STARTED",
+                    "capture_id": capture_id,
+                    "fetch_sha256": fetch_sha256,
+                    "start_guard": START_GUARD_SCHEDULED,
+                    "guard_failure_modes": list(START_GUARD_FAILURE_MODES),
+                }
+            )
             continue
 
         for bookmaker in event.get("bookmakers") or []:
@@ -204,31 +257,44 @@ def build_rows(
                             "book": book,
                             "market": market_key,
                             "reason": "ONE_SIDED_QUOTE_NOT_IMPUTED",
+                            "capture_id": capture_id,
+                            "fetch_sha256": fetch_sha256,
+                            "start_guard": START_GUARD_SCHEDULED,
+                            "guard_failure_modes": list(START_GUARD_FAILURE_MODES),
                         }
                     )
                     continue
                 for outcome in outcomes:
-                    rows.append(
-                        {
-                            "schema_version": SCHEMA_VERSION,
-                            "policy_id": policy["policy_id"],
-                            "evidence_class": "NOT_EVIDENCE",
-                            "sport_key": sport_key,
-                            "event_id": event_id,
-                            "commence_time": _iso(start),
-                            "home_team": event.get("home_team"),
-                            "away_team": event.get("away_team"),
-                            "book": book,
-                            "market": market_key,
-                            "outcome": outcome.get("name"),
-                            "point": outcome.get("point"),
-                            "price_american": outcome.get("price"),
-                            "window": window,
-                            "captured_at": captured_at,
-                            "sides_in_market": len(outcomes),
-                            "book_last_update": bookmaker.get("last_update"),
-                        }
-                    )
+                    for window in memberships:
+                        rows.append(
+                            {
+                                "schema_version": SCHEMA_VERSION,
+                                "policy_id": policy["policy_id"],
+                                "evidence_class": "NOT_EVIDENCE",
+                                "promotion_authority": False,
+                                "sport_key": sport_key,
+                                "event_id": event_id,
+                                "commence_time": _iso(start),
+                                "scheduled_lead_minutes": round(lead_minutes, 6),
+                                "actual_start_status": "UNADJUDICATED",
+                                "requires_start_attestation": True,
+                                "start_guard": START_GUARD_SCHEDULED,
+                                "guard_failure_modes": list(START_GUARD_FAILURE_MODES),
+                                "capture_id": capture_id,
+                                "fetch_sha256": fetch_sha256,
+                                "home_team": event.get("home_team"),
+                                "away_team": event.get("away_team"),
+                                "book": book,
+                                "market": market_key,
+                                "outcome": outcome.get("name"),
+                                "point": outcome.get("point"),
+                                "price_american": outcome.get("price"),
+                                "window": window,
+                                "captured_at": captured_at,
+                                "sides_in_market": len(outcomes),
+                                "book_last_update": bookmaker.get("last_update"),
+                            }
+                        )
     return rows, skipped
 
 
@@ -261,6 +327,8 @@ def run(
         "evidence_class": "NOT_EVIDENCE",
         "ran_at": _iso(now),
         "dry_run": dry_run,
+        "start_guard": START_GUARD_SCHEDULED,
+        "guard_failure_modes": list(START_GUARD_FAILURE_MODES),
         "sports": {},
     }
 
@@ -271,10 +339,13 @@ def run(
             "sport_key": sport_key,
             "events_in_index": len(events),
             "events_due": len(due),
-            "windows": sorted(set(due.values())),
+            "window_memberships_due": sum(len(x) for x in due.values()),
+            "windows": sorted({window for memberships in due.values() for window in memberships}),
             "paid_call_made": False,
             "rows_written": 0,
             "skipped": [],
+            "start_guard": START_GUARD_SCHEDULED,
+            "guard_failure_modes": list(START_GUARD_FAILURE_MODES),
         }
         if due and not dry_run:
             odds_payload = fetch_odds(sport_key, policy, keys, opener)
@@ -284,6 +355,9 @@ def run(
             entry["rows_written"] = sum(written.values())
             entry["files"] = written
             entry["skipped"] = skipped
+            if rows:
+                entry["capture_ids"] = sorted({row["capture_id"] for row in rows})
+                entry["fetch_sha256"] = sorted({row["fetch_sha256"] for row in rows})
         report["sports"][label] = entry
 
     report["total_rows_written"] = sum(
