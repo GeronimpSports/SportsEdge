@@ -29,10 +29,57 @@
   },
   "generation": {
     "id": "NFL_PLAYER_OUTCOME_G1",
-    "maximum_candidate_attempts": 6,
+    "attempt_budget_scope": "PER_ENGINE_FAMILY",
+    "maximum_candidate_attempts_per_engine_family": 6,
     "attempt_counter_starts_at": 1,
-    "hard_stop_rule": "After six evaluated candidate attempts, stop and preregister a new generation before changing architecture.",
-    "no_threshold_relaxation_after_readout": true
+    "engine_families": {
+      "receiving_volume": ["receptions"],
+      "receiving_efficiency": ["receiving_yards"],
+      "rushing_volume": ["rush_attempts"],
+      "rushing_efficiency": ["rushing_yards"],
+      "passing_volume": ["pass_attempts", "pass_completions"],
+      "passing_efficiency": ["passing_yards"],
+      "touchdown_event": ["passing_touchdowns", "rushing_touchdowns", "receiving_touchdowns", "any_touchdown"]
+    },
+    "shared_component_rule": "A shared latent/component model is evaluated and versioned once per declared evidence group; downstream markets may not count correlated validation as independent confirmations.",
+    "hard_stop_rule": "After six evaluated candidate attempts within an engine family, stop that family and preregister a new generation before changing architecture.",
+    "no_threshold_relaxation_after_readout": true,
+    "attempt_spend_definition": "An attempt is spent only when a frozen candidate specification is scored on its declared historical readout surface. Contract tests, CI plumbing, source-readiness checks, and deterministic synthetic fixtures do not spend an attempt."
+  },
+  "historical_exposure": {
+    "fresh_final_holdout_available_now": false,
+    "season_labels": {
+      "2024": "EXPOSED_RESEARCH_VALIDATION_NOT_FRESH_FINAL_HOLDOUT",
+      "2025": "EXPOSED_RESEARCH_DIAGNOSTIC_NOT_FRESH_FINAL_HOLDOUT",
+      "2026": "PROSPECTIVE_SHARED_SEASON_NOT_CLEAN_PROMOTION_HOLDOUT_FOR_G1"
+    },
+    "rule": "G1 walk-forward historical readouts are research evidence only. No 2024, 2025, or 2026 row may be represented as a fresh untouched final holdout for G1. Any future promotion claim requires separately preregistered prospective evidence that was not consumed for model selection."
+  },
+  "evidence_groups": {
+    "receiving_opportunity": {
+      "shared_components": ["team_pass_volume", "route_participation", "target_share", "catch_opportunity"],
+      "markets": ["receptions", "receiving_yards"],
+      "promotion_unit": "SHARED_COMPONENT_GROUP",
+      "market_level_checks": "CONSISTENCY_ONLY_UNLESS_COMPONENTS_ARE_INDEPENDENTLY_DISTINCT"
+    },
+    "rushing_opportunity": {
+      "shared_components": ["team_rush_volume", "player_rush_share"],
+      "markets": ["rush_attempts", "rushing_yards"],
+      "promotion_unit": "SHARED_COMPONENT_GROUP",
+      "market_level_checks": "CONSISTENCY_ONLY_UNLESS_COMPONENTS_ARE_INDEPENDENTLY_DISTINCT"
+    },
+    "passing_opportunity": {
+      "shared_components": ["team_pass_volume", "qb_dropback_share", "completion_process"],
+      "markets": ["pass_attempts", "pass_completions", "passing_yards"],
+      "promotion_unit": "SHARED_COMPONENT_GROUP",
+      "market_level_checks": "CONSISTENCY_ONLY_UNLESS_COMPONENTS_ARE_INDEPENDENTLY_DISTINCT"
+    },
+    "touchdown_event": {
+      "shared_components": ["team_scoring_environment", "red_zone_opportunity", "player_touchdown_share"],
+      "markets": ["passing_touchdowns", "rushing_touchdowns", "receiving_touchdowns", "any_touchdown"],
+      "promotion_unit": "SHARED_COMPONENT_GROUP",
+      "market_level_checks": "CONSISTENCY_ONLY_UNLESS_COMPONENTS_ARE_INDEPENDENTLY_DISTINCT"
+    }
   },
   "target_build_order": [
     "receptions",
@@ -74,6 +121,12 @@
     "feature_cutoff": "strictly before target kickoff",
     "rolling_features": "shifted so target game is never included",
     "injuries_and_status": "timestamped pregame only",
+    "inactive_status": {
+      "required_for_live_inference": true,
+      "required_source_state": "official_or_source-bound_pregame_inactive_status_timestamped_at_or_before_inference",
+      "unknown_or_stale_behavior": "BLOCK_LIVE_PLAYER_INFERENCE",
+      "post_kickoff_or_reconstructed_status": "FORBIDDEN_AS_PIT_INPUT"
+    },
     "depth_and_participation": "timestamped pregame snapshot or prior-game observed participation only",
     "weather": "timestamped pregame only",
     "opponent_features": "derived only from prior games",
@@ -85,6 +138,7 @@
     "participation and snap information when point-in-time available",
     "roster and stable player identifiers",
     "schedule and kickoff timestamps",
+    "timestamped pregame inactive status",
     "pregame injury and status information",
     "pregame weather and venue context where relevant"
   ],
@@ -99,6 +153,7 @@
       "position_and_role_baseline",
       "simple_opportunity_x_efficiency_baseline"
     ],
+    "shared_component_evidence_required": true,
     "requires_deterministic_replay": true,
     "requires_artifact_hash_binding": true,
     "requires_forward_evidence_before_runtime_activation": true
@@ -108,9 +163,11 @@
     "runtime_surface_may_change_only_after": [
       "frozen candidate artifact",
       "point-in-time-safe walk-forward validation",
+      "shared-component evidence-group pass",
       "probability calibration pass",
       "deterministic replay pass",
       "artifact source and code hash binding",
+      "timestamped inactive-status readiness",
       "prospective forward evidence",
       "certification registry pass"
     ]
