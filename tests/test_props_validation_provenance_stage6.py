@@ -221,6 +221,7 @@ class PropsValidationProvenanceStage6Tests(unittest.TestCase):
             _build(predictions=predictions, outcomes=outcomes, pits=pits, training=training)
 
         predictions, outcomes, pits, training = _fixture()
+        training["F2"] = ["g1", "train-g2", "train-g3"]
         predictions[1]["fold_id"] = "F2"
         predictions[1]["train_cutoff_ts"] = predictions[2]["train_cutoff_ts"]
         predictions[1]["calibration_fit_cutoff_ts"] = predictions[2]["calibration_fit_cutoff_ts"]
