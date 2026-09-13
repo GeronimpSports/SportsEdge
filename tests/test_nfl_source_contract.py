@@ -16,6 +16,8 @@ from sportsedge.sports.nfl.source_contract import (
 CONTRACT_PATH = Path("config/nfl_promotion_source_freeze_v1.json")
 SCHEDULE_COMMIT = "33488cbcb33839efeb3776bf81673787d18a2bcf"
 SCHEDULE_SHA256 = "45a0a605c4d6a94d241dfc0e4f8d69175001b52ec87d9e4c7ea72902810e9181"
+FROZEN_STORE_REPOSITORY = "isaacrome21-sys/SportsEdge"
+FROZEN_STORE_TAG = "nfl-source-freeze-v1"
 
 
 def _contract() -> dict:
@@ -36,9 +38,17 @@ class NFLSourceContractTests(unittest.TestCase):
         expanded = expand_nfl_source_contract(contract)
         self.assertEqual(contract["contract"], SOURCE_CONTRACT_ID)
         self.assertEqual(len(expanded), 33)
+        self.assertEqual(contract["frozen_store"]["repository"], FROZEN_STORE_REPOSITORY)
+        self.assertEqual(contract["frozen_store"]["release_tag"], FROZEN_STORE_TAG)
+        self.assertEqual(contract["frozen_store"]["asset_count"], 33)
+        self.assertIs(contract["frozen_store"]["overwrite_forbidden"], True)
+
         schedule = expanded["schedule"]
-        self.assertIn(SCHEDULE_COMMIT, schedule["uri"])
-        self.assertNotIn("/master/", schedule["uri"])
+        schedule_raw = contract["sources"]["schedule"]
+        self.assertIn(FROZEN_STORE_REPOSITORY, schedule["uri"])
+        self.assertIn(FROZEN_STORE_TAG, schedule["uri"])
+        self.assertIn(SCHEDULE_COMMIT, schedule_raw["origin_uri"])
+        self.assertNotIn("/master/", schedule_raw["origin_uri"])
         self.assertEqual(schedule["expected_sha256"], SCHEDULE_SHA256)
         self.assertEqual(schedule["upstream_identity"]["commit_sha"], SCHEDULE_COMMIT)
         self.assertEqual(
@@ -56,6 +66,8 @@ class NFLSourceContractTests(unittest.TestCase):
             self.assertIs(identity["provider_release_immutable"], False)
             self.assertEqual(len(row["expected_sha256"]), 64)
             self.assertIn(identity["asset_name"], row["uri"])
+            self.assertIn(FROZEN_STORE_REPOSITORY, row["uri"])
+            self.assertIn(FROZEN_STORE_TAG, row["uri"])
 
     def test_contract_hash_is_canonical_across_mapping_order(self):
         contract = _contract()
@@ -71,7 +83,9 @@ class NFLSourceContractTests(unittest.TestCase):
         schedule = next(row for row in attestation["sources"] if row["name"] == "schedule")
         self.assertEqual(schedule["expected_sha256"], SCHEDULE_SHA256)
         self.assertEqual(schedule["observed_sha256"], SCHEDULE_SHA256)
-        self.assertIn(SCHEDULE_COMMIT, schedule["uri"])
+        self.assertIn(FROZEN_STORE_REPOSITORY, schedule["uri"])
+        self.assertIn(FROZEN_STORE_TAG, schedule["uri"])
+        self.assertEqual(schedule["upstream_identity"]["commit_sha"], SCHEDULE_COMMIT)
 
     def test_observed_hash_drift_fails_closed(self):
         observed = _observed()
