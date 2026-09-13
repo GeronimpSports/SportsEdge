@@ -17,8 +17,24 @@ def _load(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _exists(root: Path, rel: str) -> bool:
-    return (root / rel).exists()
+def _cfb_snapshot_status(snapshot: Path) -> tuple[str | None, str | None]:
+    """Return explicit forward-snapshot classification without inventing readiness.
+
+    Older capture layouts may carry a root readiness.json. The current game-source
+    capture stores its authority/classification at capture/classification.json.
+    Neither form is allowed to imply historical PIT or promotion authority.
+    """
+    readiness = snapshot / "readiness.json"
+    if readiness.is_file():
+        payload = _load(readiness)
+        return payload.get("status"), "readiness.json"
+
+    classification = snapshot / "capture/classification.json"
+    if classification.is_file():
+        payload = _load(classification)
+        return payload.get("pit_classification") or payload.get("capture_classification"), "capture/classification.json"
+
+    return None, None
 
 
 def audit(data_root: Path) -> dict:
@@ -41,24 +57,23 @@ def audit(data_root: Path) -> dict:
         "forward_archive_present": bool(nfl_entries),
         "forward_archive_entry_count": len(nfl_entries),
         "status": "EVIDENCE_PRESENT_NOT_CERTIFIED_BY_THIS_AUDIT" if nfl_entries else "BLOCKED_NO_FORWARD_ARCHIVE",
-        "next_gate": "V2H/V2G historical readout + source-bound promotion evidence + current-market decision/close pairing",
+        "next_gate": "source-bound promotion evidence + current-market decision/close pairing; failed candidates remain failed",
     }
 
     cfb_forward = data_root / "history/cfb/forward-pit"
     cfb_snapshots = sorted(p for p in cfb_forward.iterdir() if p.is_dir()) if cfb_forward.is_dir() else []
-    cfb_latest = None
-    cfb_readiness = None
-    if cfb_snapshots:
-        cfb_latest = cfb_snapshots[-1]
-        readiness = cfb_latest / "readiness.json"
-        if readiness.is_file():
-            cfb_readiness = _load(readiness)
+    cfb_latest = cfb_snapshots[-1] if cfb_snapshots else None
+    cfb_snapshot_status = None
+    cfb_snapshot_status_source = None
+    if cfb_latest is not None:
+        cfb_snapshot_status, cfb_snapshot_status_source = _cfb_snapshot_status(cfb_latest)
     cfb_hist = data_root / "history/cfb/pit"
     result["sports"]["CFB"] = {
         "core_markets": ["MONEYLINE", "SPREAD", "TOTAL"],
         "forward_pit_snapshot_count": len(cfb_snapshots),
         "latest_forward_pit": cfb_latest.name if cfb_latest else None,
-        "latest_forward_pit_status": cfb_readiness.get("status") if isinstance(cfb_readiness, dict) else None,
+        "latest_forward_pit_status": cfb_snapshot_status,
+        "latest_forward_pit_status_source": cfb_snapshot_status_source,
         "historical_pit_training_bundle_present": cfb_hist.exists(),
         "status": "BLOCKED_HISTORICAL_PIT_TRAINING_BUNDLE_MISSING" if not cfb_hist.exists() else "HISTORICAL_PIT_PRESENT_REQUIRES_VALIDATION",
         "next_gate": "historical PIT/temporal training evidence, then calibration/holdout and paired forward decision-close evidence",
