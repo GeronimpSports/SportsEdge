@@ -10,8 +10,6 @@ on:
     paths:
       - '.github/workflows/bb-v6-settlement.yml'
       - 'scripts/score_bb_v6_forward_shadow.py'
-  schedule:
-    - cron: '37 * * * *'
 
 permissions:
   contents: write
