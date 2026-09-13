@@ -1,40 +1,166 @@
 {
-  "schema": "NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1",
-  "status": "BLOCKED_REFERENCE_NOT_BUILT",
-  "authority": "NONE",
-  "purpose": "Independent signed historical margin-mass reference for V2K key-number validation.",
-  "required_signed_keys": [-7, -3, 3, 7],
   "absolute_mass_tolerance": 0.005,
+  "authority": "NONE",
+  "block_reason": null,
+  "build_attestation": {
+    "games_sha256_verified": true,
+    "hand_entered_reference_values_used": false,
+    "manifest_file_sha256_verified": true,
+    "manifest_schedule_anchor_verified": true,
+    "production_validation_sha256_verified": true,
+    "promotion_registry_sha256_verified": true,
+    "sportsbook_prices_used": false,
+    "v2k_simulations_used": false
+  },
+  "freeze_requirements": {
+    "built_before_any_untouched_v2k_readout": true,
+    "immutable_after_untouched_readout": true,
+    "overtime_policy_required": true,
+    "sign_convention_required": true,
+    "signed_key_uncertainty_required": true,
+    "signed_probabilities_required": true,
+    "sum_of_full_margin_distribution_not_required_but_recommended": true,
+    "window_rationale_required": true
+  },
+  "joint_improvement_gate": {
+    "absolute_per_key_tolerance_still_required": true,
+    "calibration_slope_metric": "ABS_CALIBRATION_SLOPE_MINUS_1",
+    "candidate_must_strictly_improve_calibration_slope_metric": true,
+    "candidate_must_strictly_improve_signed_key_mass_metric": true,
+    "control_identity": "NFL_M2_FROZEN_CONTROL",
+    "control_metrics_must_be_provenance_bound_before_candidate_readout": true,
+    "either_dimension_alone_counts_as_pass": false,
+    "purpose": "A candidate that fixes key-number shape without improving probability calibration, or calibration without improving signed key-number shape, fails the structural test.",
+    "required": true,
+    "signed_key_mass_metric": "RMSE_ACROSS_SIGNED_KEYS_-7_-3_+3_+7_VS_FROZEN_REFERENCE"
+  },
+  "purpose": "Independent signed historical margin-mass reference for V2K key-number validation.",
+  "reference": {
+    "builder_code_sha256": "df0cf171ba47750068ec2f443c085cb8cbd37b16d940c0af6db9670c298d2ed7",
+    "control_metrics": {
+      "artifact_digest": "sha256:e53f16804c74ec197b23dd17180ad88d1c696d4a93e593ecc17fa8ccf480a437",
+      "calibration_gate_contract": "SPORTSEDGE_CALIBRATION_TRUTH_GATE_V1",
+      "calibration_slope": 0.6559729344130425,
+      "calibration_slope_metric": 0.3440270655869575,
+      "control_identity": "NFL_M2_FROZEN_CONTROL",
+      "model_id": "nfl_m2_ridge_v1",
+      "production_validation_sha256": "7a18bf664e9a701b251c62430ec80d7da410d068f95e9d0110a46f3248b94ada",
+      "promotion_registry_sha256": "821af436a066db4d3a7382ecd3280e8cb562e7668f7a5a0677be4fe74dff72dc",
+      "provenance_sha256": "e852145f66f7c21d3c21c4b6e8b02a75b38d0819e44bc7cdfbf9b2badf1299a4",
+      "signed_key_mass_rmse": 0.03333957857632348,
+      "signed_key_probability": {
+        "-3": 0.027562545959592302,
+        "-7": 0.022927566011147524,
+        "3": 0.029582834782523746,
+        "7": 0.027238043583633874
+      }
+    },
+    "evidence_artifact_digest": "sha256:e53f16804c74ec197b23dd17180ad88d1c696d4a93e593ecc17fa8ccf480a437",
+    "evidence_artifact_id": 10319922606,
+    "evidence_workflow_run_id": 34763311001,
+    "game_count": 2127,
+    "per_season_game_count": {
+      "2018": 256,
+      "2019": 256,
+      "2020": 256,
+      "2021": 272,
+      "2022": 271,
+      "2023": 272,
+      "2024": 272,
+      "2025": 272
+    },
+    "raw_source_sha256": "902f1a3796d576ee846e2b54e99b46a5ab1bdd17bd34c93e8f9f1f797f61281e",
+    "season_scope": {
+      "first_season": 2018,
+      "last_season": 2025,
+      "season_type": "REG"
+    },
+    "signed_margin_mass": {
+      "-3": {
+        "ci95_high": 0.07867232671200998,
+        "ci95_low": 0.05734973988561753,
+        "count": 143,
+        "probability": 0.06723084156088388,
+        "standard_error": 0.005429847317542096
+      },
+      "-7": {
+        "ci95_high": 0.05121058872911767,
+        "ci95_low": 0.03412727536581765,
+        "count": 89,
+        "probability": 0.04184297132110954,
+        "standard_error": 0.004341560509733311
+      },
+      "3": {
+        "ci95_high": 0.08921820003557974,
+        "ci95_low": 0.06651438975753914,
+        "count": 164,
+        "probability": 0.07710390220968501,
+        "standard_error": 0.005784034023760815
+      },
+      "7": {
+        "ci95_high": 0.05275334949024286,
+        "ci95_low": 0.035400303632619805,
+        "count": 92,
+        "probability": 0.043253408556652564,
+        "standard_error": 0.004410876372526356
+      }
+    },
+    "source_manifest_file_sha256": "ea8915e5b63ed7c0b4450b948f54bff3547e1b203650b59a2c68004425e8908d",
+    "source_manifest_sha256": "5d6d5ec66012039100d0954622d45ced6ed79c48dba355e3cf2ec2c3ec59342a"
+  },
   "reference_policy": {
-    "season_type": "REG",
     "first_season": 2018,
     "last_season": 2025,
-    "window_rationale": "Use the post-2018 NFL kickoff-rule regime through the last complete pre-2026 season. This sacrifices some sample size to reduce scoring-regime mixing. The 0.005 per-key tolerance remains intentionally conservative relative to reference sampling uncertainty and may not be widened after candidate results are observed.",
-    "sign_convention": {
-      "formula": "home_final_score_minus_away_final_score",
-      "positive_margin_means": "OFFICIAL_SCHEDULE_HOME_TEAM_WINNING",
-      "negative_margin_means": "OFFICIAL_SCHEDULE_AWAY_TEAM_WINNING",
-      "home_assignment": "OFFICIAL_SCHEDULE_HOME_TEAM_DESIGNATION",
-      "neutral_site_games": "INCLUDED_USING_OFFICIAL_SCHEDULE_HOME_AWAY_DESIGNATION"
-    },
     "overtime_policy": {
       "games_included": true,
       "margin_quantity": "FINAL_SCORE_INCLUDING_OVERTIME",
-      "regulation_margin_for_reference": false,
-      "reason": "V2K resolves ties through overtime, so the empirical reference must measure the same final-margin quantity."
+      "reason": "V2K resolves ties through overtime, so the empirical reference must measure the same final-margin quantity.",
+      "regulation_margin_for_reference": false
+    },
+    "season_type": "REG",
+    "sign_convention": {
+      "formula": "home_final_score_minus_away_final_score",
+      "home_assignment": "OFFICIAL_SCHEDULE_HOME_TEAM_DESIGNATION",
+      "negative_margin_means": "OFFICIAL_SCHEDULE_AWAY_TEAM_WINNING",
+      "neutral_site_games": "INCLUDED_USING_OFFICIAL_SCHEDULE_HOME_AWAY_DESIGNATION",
+      "positive_margin_means": "OFFICIAL_SCHEDULE_HOME_TEAM_WINNING"
     },
     "structural_break_policy": {
-      "silent_window_extension_forbidden": true,
-      "season_end_extension_requires_new_reference_version": true,
       "material_scoring_or_overtime_rule_change_requires_new_reference_version": true,
-      "reference_may_not_be_rebuilt_after_candidate_readout": true
-    }
+      "reference_may_not_be_rebuilt_after_candidate_readout": true,
+      "season_end_extension_requires_new_reference_version": true,
+      "silent_window_extension_forbidden": true
+    },
+    "window_rationale": "Use the post-2018 NFL kickoff-rule regime through the last complete pre-2026 season. This sacrifices some sample size to reduce scoring-regime mixing. The 0.005 per-key tolerance remains intentionally conservative relative to reference sampling uncertainty and may not be widened after candidate results are observed."
   },
+  "required_signed_keys": [
+    -7,
+    -3,
+    3,
+    7
+  ],
+  "schema": "NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1",
+  "source_requirements": {
+    "builder_code_sha256_required": true,
+    "game_count_required": true,
+    "hand_entered_reference_values_forbidden": true,
+    "raw_source_sha256_required": true,
+    "real_historical_games_only": true,
+    "season_scope_required": true,
+    "season_type_required": true,
+    "signed_key_counts_required": true,
+    "source_manifest_required": true,
+    "sportsbook_prices_forbidden": true,
+    "v2k_simulations_forbidden": true
+  },
+  "status": "FROZEN_READY",
   "uncertainty_policy": {
-    "reported_per_signed_key": true,
-    "pooled_key_uncertainty_forbidden": true,
-    "standard_error_method": "SQRT_P_TIMES_ONE_MINUS_P_OVER_N",
+    "ci_does_not_relax_absolute_mass_tolerance": true,
+    "ci_is_interpretive_not_an_escape_hatch": true,
     "confidence_interval_method": "WILSON_SCORE_95_TWO_SIDED",
+    "pooled_key_uncertainty_forbidden": true,
+    "reference_noise_choice": "CONSERVATIVE_GATE_ACCEPTED_BEFORE_CANDIDATE_READOUT",
+    "reported_per_signed_key": true,
     "required_fields_per_key": [
       "count",
       "probability",
@@ -42,92 +168,6 @@
       "ci95_low",
       "ci95_high"
     ],
-    "ci_is_interpretive_not_an_escape_hatch": true,
-    "ci_does_not_relax_absolute_mass_tolerance": true,
-    "reference_noise_choice": "CONSERVATIVE_GATE_ACCEPTED_BEFORE_CANDIDATE_READOUT"
-  },
-  "joint_improvement_gate": {
-    "required": true,
-    "control_identity": "NFL_M2_FROZEN_CONTROL",
-    "control_metrics_must_be_provenance_bound_before_candidate_readout": true,
-    "calibration_slope_metric": "ABS_CALIBRATION_SLOPE_MINUS_1",
-    "signed_key_mass_metric": "RMSE_ACROSS_SIGNED_KEYS_-7_-3_+3_+7_VS_FROZEN_REFERENCE",
-    "candidate_must_strictly_improve_calibration_slope_metric": true,
-    "candidate_must_strictly_improve_signed_key_mass_metric": true,
-    "either_dimension_alone_counts_as_pass": false,
-    "absolute_per_key_tolerance_still_required": true,
-    "purpose": "A candidate that fixes key-number shape without improving probability calibration, or calibration without improving signed key-number shape, fails the structural test."
-  },
-  "source_requirements": {
-    "real_historical_games_only": true,
-    "sportsbook_prices_forbidden": true,
-    "v2k_simulations_forbidden": true,
-    "hand_entered_reference_values_forbidden": true,
-    "source_manifest_required": true,
-    "raw_source_sha256_required": true,
-    "builder_code_sha256_required": true,
-    "season_scope_required": true,
-    "season_type_required": true,
-    "game_count_required": true,
-    "signed_key_counts_required": true
-  },
-  "freeze_requirements": {
-    "signed_probabilities_required": true,
-    "signed_key_uncertainty_required": true,
-    "sign_convention_required": true,
-    "overtime_policy_required": true,
-    "window_rationale_required": true,
-    "sum_of_full_margin_distribution_not_required_but_recommended": true,
-    "built_before_any_untouched_v2k_readout": true,
-    "immutable_after_untouched_readout": true
-  },
-  "reference": {
-    "season_scope": {
-      "season_type": "REG",
-      "first_season": 2018,
-      "last_season": 2025
-    },
-    "game_count": null,
-    "raw_source_sha256": null,
-    "builder_code_sha256": null,
-    "source_manifest_sha256": null,
-    "signed_margin_mass": {
-      "-7": {
-        "count": null,
-        "probability": null,
-        "standard_error": null,
-        "ci95_low": null,
-        "ci95_high": null
-      },
-      "-3": {
-        "count": null,
-        "probability": null,
-        "standard_error": null,
-        "ci95_low": null,
-        "ci95_high": null
-      },
-      "3": {
-        "count": null,
-        "probability": null,
-        "standard_error": null,
-        "ci95_low": null,
-        "ci95_high": null
-      },
-      "7": {
-        "count": null,
-        "probability": null,
-        "standard_error": null,
-        "ci95_low": null,
-        "ci95_high": null
-      }
-    },
-    "control_metrics": {
-      "control_identity": "NFL_M2_FROZEN_CONTROL",
-      "calibration_slope": null,
-      "calibration_slope_metric": null,
-      "signed_key_mass_rmse": null,
-      "provenance_sha256": null
-    }
-  },
-  "block_reason": "The reference policy is frozen, but deterministic source filtering, per-key counts/uncertainty, control-metric binding, source hashes, and builder-code binding have not yet produced a FROZEN_READY artifact. Previously observed 1999-2025 aggregate values are not admissible for this 2018-2025 reference."
+    "standard_error_method": "SQRT_P_TIMES_ONE_MINUS_P_OVER_N"
+  }
 }
