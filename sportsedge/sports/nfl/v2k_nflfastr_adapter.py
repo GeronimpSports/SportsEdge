@@ -21,9 +21,14 @@ def classify_drive_result(raw_result: str, *, defensive_or_special_teams_td: boo
 def adapt_drive_rows(rows: Iterable[Mapping]) -> list[DriveRow]:
     out=[]; seen=set()
     for r in rows:
-        game=str(r.get("game_id") or "").strip(); offense=str(r.get("posteam") or r.get("offense") or "").strip()
-        kickoff=str(r.get("kickoff_utc") or "").strip(); drive_id=str(r.get("drive") or r.get("drive_id") or "").strip()
-        if not all((game,offense,kickoff,drive_id)): raise ValueError("raw drive missing game/offense/kickoff/drive identity")
+        game=str(r.get("game_id") or "").strip()
+        offense=str(r.get("posteam") or r.get("offense") or "").strip()
+        defense=str(r.get("defteam") or r.get("defense") or "").strip()
+        kickoff=str(r.get("kickoff_utc") or "").strip()
+        drive_id=str(r.get("drive") or r.get("drive_id") or "").strip()
+        if not all((game,offense,defense,kickoff,drive_id)):
+            raise ValueError("raw drive missing game/offense/defense/kickoff/drive identity")
+        if offense==defense: raise ValueError("offense and defense must differ")
         identity=(game,drive_id)
         if identity in seen: raise ValueError("duplicate raw drive identity")
         seen.add(identity)
@@ -36,6 +41,6 @@ def adapt_drive_rows(rows: Iterable[Mapping]) -> list[DriveRow]:
         if not 1.0 <= yard <= 99.0: raise ValueError("normalized start_yard outside 1..99")
         result=r.get("drive_result") if r.get("drive_result") is not None else r.get("result")
         outcome=classify_drive_result(str(result or ""), defensive_or_special_teams_td=bool(r.get("def_st_td",False)))
-        out.append(DriveRow(game,kickoff,offense,yard,outcome))
+        out.append(DriveRow(game,drive_id,kickoff,offense,defense,yard,outcome))
     if not out: raise ValueError("no drive rows adapted")
     return out
