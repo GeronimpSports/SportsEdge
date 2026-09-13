@@ -18,6 +18,13 @@ from sportsedge.props_validation_stage6 import validate_probability_rows
 
 SCHEMA_VERSION="PROP_VALIDATION_ATTESTATION_V1"
 AUTHORITY="RESEARCH_ONLY"
+_ZERO_AUTHORITY_FLAGS=(
+    "market_prices_used_as_model_inputs",
+    "can_create_model_p",
+    "can_promote",
+    "staking_authority",
+    "official_authority",
+)
 
 
 def _dt(value:object,name:str)->datetime:
@@ -103,6 +110,9 @@ def verify_validation_attestation(attestation:Mapping[str,Any])->dict[str,Any]:
     if not isinstance(payload.get("passed"),bool):raise ValueError("VALIDATION_ATTESTATION_PASS_FLAG_INVALID")
     if payload.get("status") != ("PASS" if payload["passed"] else "FAIL"):
         raise ValueError("VALIDATION_ATTESTATION_STATUS_CONTRADICTION")
+    for field in _ZERO_AUTHORITY_FLAGS:
+        if payload.get(field) is not False:
+            raise ValueError(f"VALIDATION_ATTESTATION_AUTHORITY_FLAG_INVALID:{field}")
     return payload
 
 
