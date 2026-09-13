@@ -67,6 +67,7 @@ jobs:
             sportsedge/sports/nfl/production_validation.py \
             sportsedge/sports/nfl/source_contract.py \
             sportsedge/sports/nfl/source_manifest.py \
+            scripts/materialize_nfl_frozen_sources.py \
             sportsedge/sports/nfl/simulator_profile.py \
             scripts/run_nfl_production_validation.py \
             scripts/run_nfl_production_validation_frozen.py \
@@ -85,41 +86,12 @@ jobs:
       - name: Run NFL contract tests
         run: python -m unittest discover -s tests -p 'test_nfl*.py' -v
 
-      - name: Freeze public NFL production sources
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts/football/sources/{pbp,participation,depth}
-
-          # Transport retries may repeat the same source request, but source
-          # identity is frozen separately by the checked-in SHA-256 contract.
-          fetch_source() {
-            local url="$1"
-            local output="$2"
-            curl --fail --location --silent --show-error \
-              --retry 5 --retry-delay 2 --retry-all-errors \
-              --connect-timeout 30 \
-              "$url" -o "$output"
-          }
-
-          fetch_source \
-            'https://raw.githubusercontent.com/nflverse/nfldata/33488cbcb33839efeb3776bf81673787d18a2bcf/data/games.csv' \
-            artifacts/football/sources/games.csv
-          fetch_source \
-            'https://raw.githubusercontent.com/greerreNFL/Stadiums/efa9543af50b01424754219fa0e4f3c7044ff198/data/team_stadiums.csv' \
-            artifacts/football/sources/team_stadiums.csv
-          for season in $(seq 2016 2025); do
-            fetch_source \
-              "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_${season}.csv.gz" \
-              "artifacts/football/sources/pbp/play_by_play_${season}.csv.gz"
-            fetch_source \
-              "https://github.com/nflverse/nflverse-data/releases/download/pbp_participation/pbp_participation_${season}.csv" \
-              "artifacts/football/sources/participation/pbp_participation_${season}.csv"
-            fetch_source \
-              "https://github.com/nflverse/nflverse-data/releases/download/depth_charts/depth_charts_${season}.csv" \
-              "artifacts/football/sources/depth/depth_charts_${season}.csv"
-          done
-
+      - name: Materialize SportsEdge-frozen NFL production sources
+        run: >-
+          python scripts/materialize_nfl_frozen_sources.py
+          --source-contract config/nfl_promotion_source_freeze_v1.json
+          --output-root artifacts/football/sources
+          --attestation-out artifacts/football/nfl_source_materialization_attestation.json
       - name: Build exact production-M2 walk-forward evidence
         env:
           TZ: UTC
@@ -132,6 +104,7 @@ jobs:
           --participation-dir artifacts/football/sources/participation
           --depth-dir artifacts/football/sources/depth
           --stadium-file artifacts/football/sources/team_stadiums.csv
+          --starter-override-file artifacts/football/sources/nfl_historical_starter_overrides.json
           --git-sha "$EVIDENCE_GIT_SHA"
           --start-season 2016 --end-season 2025
           --neutral-site-policy exclude_from_evaluation
@@ -202,6 +175,7 @@ jobs:
           --participation-dir artifacts/football/sources/participation
           --depth-dir artifacts/football/sources/depth
           --stadium-file artifacts/football/sources/team_stadiums.csv
+          --starter-override-file artifacts/football/sources/nfl_historical_starter_overrides.json
           --git-sha "$EVIDENCE_GIT_SHA"
           --start-season 2016 --end-season 2025
           --neutral-site-policy exclude_from_evaluation
