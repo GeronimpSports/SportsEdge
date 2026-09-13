@@ -5,6 +5,59 @@
   "purpose": "Independent signed historical margin-mass reference for V2K key-number validation.",
   "required_signed_keys": [-7, -3, 3, 7],
   "absolute_mass_tolerance": 0.005,
+  "reference_policy": {
+    "season_type": "REG",
+    "first_season": 2018,
+    "last_season": 2025,
+    "window_rationale": "Use the post-2018 NFL kickoff-rule regime through the last complete pre-2026 season. This sacrifices some sample size to reduce scoring-regime mixing. The 0.005 per-key tolerance remains intentionally conservative relative to reference sampling uncertainty and may not be widened after candidate results are observed.",
+    "sign_convention": {
+      "formula": "home_final_score_minus_away_final_score",
+      "positive_margin_means": "OFFICIAL_SCHEDULE_HOME_TEAM_WINNING",
+      "negative_margin_means": "OFFICIAL_SCHEDULE_AWAY_TEAM_WINNING",
+      "home_assignment": "OFFICIAL_SCHEDULE_HOME_TEAM_DESIGNATION",
+      "neutral_site_games": "INCLUDED_USING_OFFICIAL_SCHEDULE_HOME_AWAY_DESIGNATION"
+    },
+    "overtime_policy": {
+      "games_included": true,
+      "margin_quantity": "FINAL_SCORE_INCLUDING_OVERTIME",
+      "regulation_margin_for_reference": false,
+      "reason": "V2K resolves ties through overtime, so the empirical reference must measure the same final-margin quantity."
+    },
+    "structural_break_policy": {
+      "silent_window_extension_forbidden": true,
+      "season_end_extension_requires_new_reference_version": true,
+      "material_scoring_or_overtime_rule_change_requires_new_reference_version": true,
+      "reference_may_not_be_rebuilt_after_candidate_readout": true
+    }
+  },
+  "uncertainty_policy": {
+    "reported_per_signed_key": true,
+    "pooled_key_uncertainty_forbidden": true,
+    "standard_error_method": "SQRT_P_TIMES_ONE_MINUS_P_OVER_N",
+    "confidence_interval_method": "WILSON_SCORE_95_TWO_SIDED",
+    "required_fields_per_key": [
+      "count",
+      "probability",
+      "standard_error",
+      "ci95_low",
+      "ci95_high"
+    ],
+    "ci_is_interpretive_not_an_escape_hatch": true,
+    "ci_does_not_relax_absolute_mass_tolerance": true,
+    "reference_noise_choice": "CONSERVATIVE_GATE_ACCEPTED_BEFORE_CANDIDATE_READOUT"
+  },
+  "joint_improvement_gate": {
+    "required": true,
+    "control_identity": "NFL_M2_FROZEN_CONTROL",
+    "control_metrics_must_be_provenance_bound_before_candidate_readout": true,
+    "calibration_slope_metric": "ABS_CALIBRATION_SLOPE_MINUS_1",
+    "signed_key_mass_metric": "RMSE_ACROSS_SIGNED_KEYS_-7_-3_+3_+7_VS_FROZEN_REFERENCE",
+    "candidate_must_strictly_improve_calibration_slope_metric": true,
+    "candidate_must_strictly_improve_signed_key_mass_metric": true,
+    "either_dimension_alone_counts_as_pass": false,
+    "absolute_per_key_tolerance_still_required": true,
+    "purpose": "A candidate that fixes key-number shape without improving probability calibration, or calibration without improving signed key-number shape, fails the structural test."
+  },
   "source_requirements": {
     "real_historical_games_only": true,
     "sportsbook_prices_forbidden": true,
@@ -14,26 +67,67 @@
     "raw_source_sha256_required": true,
     "builder_code_sha256_required": true,
     "season_scope_required": true,
-    "game_count_required": true
+    "season_type_required": true,
+    "game_count_required": true,
+    "signed_key_counts_required": true
   },
   "freeze_requirements": {
     "signed_probabilities_required": true,
+    "signed_key_uncertainty_required": true,
+    "sign_convention_required": true,
+    "overtime_policy_required": true,
+    "window_rationale_required": true,
     "sum_of_full_margin_distribution_not_required_but_recommended": true,
     "built_before_any_untouched_v2k_readout": true,
     "immutable_after_untouched_readout": true
   },
   "reference": {
-    "season_scope": null,
+    "season_scope": {
+      "season_type": "REG",
+      "first_season": 2018,
+      "last_season": 2025
+    },
     "game_count": null,
     "raw_source_sha256": null,
     "builder_code_sha256": null,
     "source_manifest_sha256": null,
     "signed_margin_mass": {
-      "-7": null,
-      "-3": null,
-      "3": null,
-      "7": null
+      "-7": {
+        "count": null,
+        "probability": null,
+        "standard_error": null,
+        "ci95_low": null,
+        "ci95_high": null
+      },
+      "-3": {
+        "count": null,
+        "probability": null,
+        "standard_error": null,
+        "ci95_low": null,
+        "ci95_high": null
+      },
+      "3": {
+        "count": null,
+        "probability": null,
+        "standard_error": null,
+        "ci95_low": null,
+        "ci95_high": null
+      },
+      "7": {
+        "count": null,
+        "probability": null,
+        "standard_error": null,
+        "ci95_low": null,
+        "ci95_high": null
+      }
+    },
+    "control_metrics": {
+      "control_identity": "NFL_M2_FROZEN_CONTROL",
+      "calibration_slope": null,
+      "calibration_slope_metric": null,
+      "signed_key_mass_rmse": null,
+      "provenance_sha256": null
     }
   },
-  "block_reason": "Real historical source bytes and the frozen signed-key table have not yet been bound on main. Uploaded demonstration values are not admissible evidence."
+  "block_reason": "The reference policy is frozen, but deterministic source filtering, per-key counts/uncertainty, control-metric binding, source hashes, and builder-code binding have not yet produced a FROZEN_READY artifact. Previously observed 1999-2025 aggregate values are not admissible for this 2018-2025 reference."
 }
