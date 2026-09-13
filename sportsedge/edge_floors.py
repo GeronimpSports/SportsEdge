@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 DEFAULT_EDGE_FLOOR_CONFIG = "config/truth_gate_floors.json"
 EDGE_FLOOR_SCHEMA_VERSION = 2
+DEVIG_POLICY_SCHEMA_VERSIONS = (2, 3)
 DEVIG_POLICY_ID = "EDGE_FLOOR_DEVIG_V1"
 DEVIG_POLICY_STATUS = "FROZEN_PRE_DERIVATION"
 SUPPORTED_DEVIG_METHODS = ("MULTIPLICATIVE_V1", "POWER_V1", "SHIN_V1")
@@ -87,15 +88,15 @@ def _truth_gate(config: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def require_frozen_devig_policy(*, config: Mapping[str, Any]) -> FrozenDevigPolicy:
-    """Resolve the pre-derivation devig contract from the existing floor schema.
+    """Resolve the frozen pre-derivation devig contract.
 
-    The policy is deliberately stored beside edge floors rather than in a second
-    configuration/schema.  It chooses one estimator explicitly; sensitivity
-    methods are diagnostics/gates and are never aggregated by taking a minimum.
+    Schema v3 nests edge-floor records by sport but preserves the devig-policy
+    contract unchanged. Accept only the explicitly supported schema versions;
+    floor resolution remains separately fail-closed until it is sport-aware.
     """
     truth_gate = _truth_gate(config)
     schema_version = truth_gate.get("schema_version")
-    if type(schema_version) is not int or schema_version != EDGE_FLOOR_SCHEMA_VERSION:
+    if type(schema_version) is not int or schema_version not in DEVIG_POLICY_SCHEMA_VERSIONS:
         raise EdgeFloorError("EDGE_FLOOR_SCHEMA_VERSION_MISMATCH")
 
     raw = truth_gate.get("devig_policy")
