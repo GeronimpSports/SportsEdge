@@ -27,72 +27,33 @@ jobs:
           path = Path('.github/workflows/football-nfl-promotion-evidence.yml')
           text = path.read_text()
 
-          compile_old = '''            sportsedge/sports/nfl/source_contract.py \\
-            sportsedge/sports/nfl/source_manifest.py \\
-'''
-          compile_new = '''            sportsedge/sports/nfl/source_contract.py \\
-            sportsedge/sports/nfl/source_manifest.py \\
-            scripts/materialize_nfl_frozen_sources.py \\
-'''
+          compile_old = "            sportsedge/sports/nfl/source_contract.py \\\n            sportsedge/sports/nfl/source_manifest.py \\\n"
+          compile_new = "            sportsedge/sports/nfl/source_contract.py \\\n            sportsedge/sports/nfl/source_manifest.py \\\n            scripts/materialize_nfl_frozen_sources.py \\\n"
           if 'scripts/materialize_nfl_frozen_sources.py \\' not in text:
               if compile_old not in text:
                   raise SystemExit('NFL_SOURCE_WIRE_COMPILE_ANCHOR_MISSING')
               text = text.replace(compile_old, compile_new, 1)
 
-          old = '''      - name: Freeze public NFL production sources
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts/football/sources/{pbp,participation,depth}
-
-          # Transport retries may repeat the same source request, but source
-          # identity is frozen separately by the checked-in SHA-256 contract.
-          fetch_source() {
-            local url="$1"
-            local output="$2"
-            curl --fail --location --silent --show-error \\
-              --retry 5 --retry-delay 2 --retry-all-errors \\
-              --connect-timeout 30 \\
-              "$url" -o "$output"
-          }
-
-          fetch_source \\
-            'https://raw.githubusercontent.com/nflverse/nfldata/33488cbcb33839efeb3776bf81673787d18a2bcf/data/games.csv' \\
-            artifacts/football/sources/games.csv
-          fetch_source \\
-            'https://raw.githubusercontent.com/greerreNFL/Stadiums/efa9543af50b01424754219fa0e4f3c7044ff198/data/team_stadiums.csv' \\
-            artifacts/football/sources/team_stadiums.csv
-          for season in $(seq 2016 2025); do
-            fetch_source \\
-              "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_${season}.csv.gz" \\
-              "artifacts/football/sources/pbp/play_by_play_${season}.csv.gz"
-            fetch_source \\
-              "https://github.com/nflverse/nflverse-data/releases/download/pbp_participation/pbp_participation_${season}.csv" \\
-              "artifacts/football/sources/participation/pbp_participation_${season}.csv"
-            fetch_source \\
-              "https://github.com/nflverse/nflverse-data/releases/download/depth_charts/depth_charts_${season}.csv" \\
-              "artifacts/football/sources/depth/depth_charts_${season}.csv"
-          done
-'''
-          new = '''      - name: Materialize SportsEdge-frozen NFL production sources
-        run: >-
-          python scripts/materialize_nfl_frozen_sources.py
-          --source-contract config/nfl_promotion_source_freeze_v1.json
-          --output-root artifacts/football/sources
-          --attestation-out artifacts/football/nfl_source_materialization_attestation.json
-'''
+          new_block = "\n".join([
+              "      - name: Materialize SportsEdge-frozen NFL production sources",
+              "        run: >-",
+              "          python scripts/materialize_nfl_frozen_sources.py",
+              "          --source-contract config/nfl_promotion_source_freeze_v1.json",
+              "          --output-root artifacts/football/sources",
+              "          --attestation-out artifacts/football/nfl_source_materialization_attestation.json",
+              "",
+          ])
           if 'Materialize SportsEdge-frozen NFL production sources' not in text:
-              if old not in text:
-                  raise SystemExit('NFL_SOURCE_WIRE_DOWNLOAD_BLOCK_ANCHOR_MISSING')
-              text = text.replace(old, new, 1)
+              start_marker = '      - name: Freeze public NFL production sources\n'
+              end_marker = '      - name: Build exact production-M2 walk-forward evidence\n'
+              start = text.find(start_marker)
+              end = text.find(end_marker, start)
+              if start < 0 or end < 0:
+                  raise SystemExit(f'NFL_SOURCE_WIRE_DOWNLOAD_BLOCK_ANCHOR_MISSING:{start}:{end}')
+              text = text[:start] + new_block + text[end:]
 
-          starter_anchor = '''          --stadium-file artifacts/football/sources/team_stadiums.csv
-          --git-sha "$EVIDENCE_GIT_SHA"
-'''
-          starter_new = '''          --stadium-file artifacts/football/sources/team_stadiums.csv
-          --starter-override-file artifacts/football/sources/nfl_historical_starter_overrides.json
-          --git-sha "$EVIDENCE_GIT_SHA"
-'''
+          starter_anchor = "          --stadium-file artifacts/football/sources/team_stadiums.csv\n          --git-sha \"$EVIDENCE_GIT_SHA\"\n"
+          starter_new = "          --stadium-file artifacts/football/sources/team_stadiums.csv\n          --starter-override-file artifacts/football/sources/nfl_historical_starter_overrides.json\n          --git-sha \"$EVIDENCE_GIT_SHA\"\n"
           existing = text.count('--starter-override-file artifacts/football/sources/nfl_historical_starter_overrides.json')
           if existing == 0:
               count = text.count(starter_anchor)
