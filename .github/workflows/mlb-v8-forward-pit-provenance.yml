@@ -1,0 +1,22 @@
+name: mlb-v8-forward-pit-provenance
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/audit_mlb_v8_forward_pit_provenance.py'
+      - '.github/workflows/mlb-v8-forward-pit-provenance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify forward PIT provenance fail-closed contract
+        run: python scripts/audit_mlb_v8_forward_pit_provenance.py --self-test
