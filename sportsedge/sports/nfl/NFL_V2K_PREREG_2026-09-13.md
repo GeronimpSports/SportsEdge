@@ -2,10 +2,10 @@
 
 Status: PREREGISTERED_RESEARCH_ONLY
 Authority: NO Model_P / NO promotion / NO staking / NO OFFICIAL
-Parent evidence: V2J first readout is frozen rejection evidence and MUST NOT be used for V2K tuning.
+Parent evidence: V2J first readout is still pending at preregistration time. V2K implementation may be prepared in parallel, but untouched V2K evaluation is forbidden until immutable V2J first-readout evidence proves rejection. V2J readout values MUST NOT be used for V2K tuning.
 
 ## Hypothesis
-V2J's joint-score distribution failed the frozen signed key-margin mass tolerance. V2K is a materially different generative architecture: it models possessions, starting field position and football-native drive outcomes, then simulates final scores using discrete scoring events and shared game state.
+V2K is a materially different generative architecture intended to address the known production-family weaknesses in joint-score shape and signed key-margin mass without conditioning its parameters on V2J's untouched readout. It models possessions, starting field position and football-native drive outcomes, then simulates final scores using discrete scoring events and shared game state.
 
 ## Frozen source contract
 Historical play-by-play/drive inputs must be PIT-safe and version-pinned. nflverse/nflfastR is the preferred public source family. Every acquired raw object must be cached and recorded with source URL/identifier, retrieval timestamp, season/week scope, byte SHA256 and parser/code SHA. No sportsbook prices, betting splits, capper opinions, 2026 forward outcomes or postgame information available after the prediction timestamp may enter model fitting or candidate selection.
@@ -30,6 +30,9 @@ Temporal/season-forward only; no random game split. Evaluation seasons/folds and
 Frozen key-number requirement: max absolute error <= 0.005 at every signed key. No post-hoc redistribution, rounding hack, mixture weight adjustment or calibration step may target the untouched key-number results after readout.
 
 Calibration pass cannot rescue predictive failure; predictive pass cannot rescue calibration failure; neither can rescue key-number failure.
+
+## Predecessor gate
+The V2K evaluator must fail closed unless it is given immutable V2J first-readout evidence and immutable V2J key-math evidence that bind the V2J candidate identity, preserve zero promotion/Model_P/OFFICIAL authority, and prove at least one frozen V2J rejection gate failed. Those predecessor artifact hashes must be carried into the V2K evaluation result. A pending, missing, passing, altered, or identity-mismatched V2J artifact cannot authorize V2K untouched evaluation.
 
 ## Market derivation if and only if model-validity gates pass
 ML, spread, game total, home team total and away team total must all be derived from the SAME frozen joint-score distribution. Push probability must be retained for integer lines. No independent market-specific probability model may contradict the joint distribution.
