@@ -31,6 +31,8 @@ jobs:
       - name: Test floor-aware readiness contract
         run: python -m unittest tests.test_mlb_promotion_readiness -v
       - name: Build immutable diagnostic report
+        env:
+          PYTHONPATH: .
         run: |
           set -euo pipefail
           python scripts/audit_mlb_promotion_readiness.py --out artifacts/mlb-promotion-readiness.json >/tmp/mlb-readiness.json
