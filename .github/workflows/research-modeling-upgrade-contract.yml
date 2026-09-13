@@ -8,10 +8,13 @@ on:
       - 'config/nfl_m2_freeze.json'
       - 'config/football_prop_engine_surface.json'
       - 'sportsedge/sports/nfl/research_play_level.py'
+      - 'sportsedge/sports/nfl/research_game_model.py'
       - 'sportsedge/research_diagnostics.py'
       - 'scripts/run_nfl_play_level_research.py'
+      - 'scripts/run_nfl_game_model_research.py'
       - 'tests/test_nfl_research_play_level.py'
       - 'tests/test_nfl_play_level_research_runner.py'
+      - 'tests/test_nfl_game_model_research.py'
       - 'tests/test_research_diagnostics.py'
       - 'scripts/audit_research_modeling_upgrade.py'
       - '.github/workflows/research-modeling-upgrade-contract.yml'
@@ -23,10 +26,13 @@ on:
       - 'config/nfl_m2_freeze.json'
       - 'config/football_prop_engine_surface.json'
       - 'sportsedge/sports/nfl/research_play_level.py'
+      - 'sportsedge/sports/nfl/research_game_model.py'
       - 'sportsedge/research_diagnostics.py'
       - 'scripts/run_nfl_play_level_research.py'
+      - 'scripts/run_nfl_game_model_research.py'
       - 'tests/test_nfl_research_play_level.py'
       - 'tests/test_nfl_play_level_research_runner.py'
+      - 'tests/test_nfl_game_model_research.py'
       - 'tests/test_research_diagnostics.py'
       - 'scripts/audit_research_modeling_upgrade.py'
       - '.github/workflows/research-modeling-upgrade-contract.yml'
@@ -47,10 +53,13 @@ jobs:
           python -m py_compile
           scripts/audit_research_modeling_upgrade.py
           scripts/run_nfl_play_level_research.py
+          scripts/run_nfl_game_model_research.py
           sportsedge/sports/nfl/research_play_level.py
+          sportsedge/sports/nfl/research_game_model.py
           sportsedge/research_diagnostics.py
           tests/test_nfl_research_play_level.py
           tests/test_nfl_play_level_research_runner.py
+          tests/test_nfl_game_model_research.py
           tests/test_research_diagnostics.py
       - name: Enforce research-only boundary
         run: python scripts/audit_research_modeling_upgrade.py
@@ -58,5 +67,7 @@ jobs:
         run: python -m unittest tests.test_nfl_research_play_level -v
       - name: Verify historical artifact runner boundaries
         run: python -m unittest tests.test_nfl_play_level_research_runner -v
+      - name: Verify deterministic game-model research core
+        run: python -m unittest tests.test_nfl_game_model_research -v
       - name: Verify scoring calibration ablation and drift diagnostics
         run: python -m unittest tests.test_research_diagnostics -v
