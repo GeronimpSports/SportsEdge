@@ -75,17 +75,34 @@ def _catalog_outcomes(info: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def _timeline(outcome: dict[str, Any], player_id: str) -> list[dict[str, Any]]:
+def _timeline(
+    outcome: dict[str, Any],
+    player_id: str,
+    *,
+    diagnostics: list[dict[str, Any]] | None = None,
+    context: dict[str, Any] | None = None,
+    counters: Counter | None = None,
+) -> list[dict[str, Any]]:
     rows = ((outcome.get("players") or {}).get(player_id)) or []
     if not isinstance(rows, list):
         return []
     out: list[dict[str, Any]] = []
-    for row in rows:
+    for index, row in enumerate(rows):
         if not isinstance(row, dict):
             continue
         try:
             ts = _parse_ts(row.get("createdAt"))
-        except Exception:
+        except Exception as exc:
+            if counters is not None:
+                counters["invalid_quote_created_at"] += 1
+            if diagnostics is not None:
+                diagnostics.append({
+                    **(context or {}),
+                    "player_id": player_id,
+                    "quote_index": index,
+                    "createdAt": row.get("createdAt"),
+                    "reason": f"QUOTE_CREATED_AT_INVALID:{type(exc).__name__}:{exc}",
+                })
             continue
         price = None
         try:
@@ -103,8 +120,6 @@ def _state_at(timeline: list[dict[str, Any]], cutoff: datetime) -> dict[str, Any
     if not eligible:
         return None
     state = eligible[-1]
-    # A later active=false record explicitly means the quote was no longer
-    # executable. Never skip backward to resurrect an earlier active quote.
     if state.get("_active") is not True:
         return None
     price = state.get("_price")
@@ -113,10 +128,7 @@ def _state_at(timeline: list[dict[str, Any]], cutoff: datetime) -> dict[str, Any
     return state
 
 
-def _state_pair(
-    left: list[dict[str, Any]], right: list[dict[str, Any]], *, cutoff: datetime,
-    max_age_seconds: float | None,
-) -> tuple[dict[str, Any], dict[str, Any]] | None:
+def _state_pair(left, right, *, cutoff: datetime, max_age_seconds: float | None):
     a = _state_at(left, cutoff)
     b = _state_at(right, cutoff)
     if a is None or b is None:
@@ -140,12 +152,7 @@ def _player_ids(outcomes: list[dict[str, Any]]) -> list[str]:
     return sorted(left & right)
 
 
-def _pair_row(
-    *, fixture: dict[str, Any], history_path: Path, history_sha: str,
-    book: str, market_id: str, info: dict[str, Any], outcome_ids: tuple[str, str],
-    player_id: str, decision: tuple[dict[str, Any], dict[str, Any]],
-    close: tuple[dict[str, Any], dict[str, Any]] | None, catalog_sha: str,
-) -> dict[str, Any]:
+def _pair_row(*, fixture, history_path, history_sha, book, market_id, info, outcome_ids, player_id, decision, close, catalog_sha):
     first_pitch = _parse_ts(fixture["startTime"])
     target = first_pitch - timedelta(minutes=DECISION_MINUTES)
     a, b = decision
@@ -209,7 +216,6 @@ def build(root: Path, out: Path) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
     counts = Counter()
-
     for fixture_path in sorted(root.glob("????-??-??/*/fixture.normalized.json")):
         try:
             fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
@@ -230,7 +236,6 @@ def build(root: Path, out: Path) -> dict[str, Any]:
             except Exception as exc:
                 failures.append({"path": history_path.as_posix(), "reason": f"HISTORY_INVALID:{type(exc).__name__}:{exc}"})
                 continue
-
             for book, book_row in sorted((payload.get("bookmakers") or {}).items()):
                 if not isinstance(book_row, dict):
                     continue
@@ -246,42 +251,23 @@ def build(root: Path, out: Path) -> dict[str, Any]:
                     outcome_ids = tuple(sorted(str(x) for x in outcomes_map.keys()))
                     outcome_rows = [outcomes_map[outcome_ids[0]], outcomes_map[outcome_ids[1]]]
                     for player_id in _player_ids(outcome_rows):
-                        left = _timeline(outcome_rows[0], player_id)
-                        right = _timeline(outcome_rows[1], player_id)
-                        decision = _state_pair(
-                            left, right, cutoff=target,
-                            max_age_seconds=CANONICAL_TOLERANCE_SECONDS,
-                        )
+                        ctx = {"path": history_path.as_posix(), "fixture_id": str(fixture.get("fixtureId")), "book": str(book), "market_id": str(market_id)}
+                        left = _timeline(outcome_rows[0], player_id, diagnostics=failures, context={**ctx, "outcome_id": outcome_ids[0]}, counters=counts)
+                        right = _timeline(outcome_rows[1], player_id, diagnostics=failures, context={**ctx, "outcome_id": outcome_ids[1]}, counters=counts)
+                        decision = _state_pair(left, right, cutoff=target, max_age_seconds=CANONICAL_TOLERANCE_SECONDS)
                         if decision is None:
                             counts["no_canonical_t30_pair"] += 1
                             continue
-                        close = _state_pair(
-                            left, right,
-                            cutoff=first_pitch - timedelta(microseconds=1),
-                            max_age_seconds=None,
-                        )
+                        close = _state_pair(left, right, cutoff=first_pitch - timedelta(microseconds=1), max_age_seconds=None)
                         if close is not None and min(close[0]["_ts"], close[1]["_ts"]) <= max(decision[0]["_ts"], decision[1]["_ts"]):
                             close = None
-                        row = _pair_row(
-                            fixture=fixture,
-                            history_path=history_path,
-                            history_sha=history_sha,
-                            book=str(book),
-                            market_id=str(market_id),
-                            info=info,
-                            outcome_ids=(outcome_ids[0], outcome_ids[1]),
-                            player_id=player_id,
-                            decision=decision,
-                            close=close,
-                            catalog_sha=catalog_sha,
-                        )
+                        row = _pair_row(fixture=fixture, history_path=history_path, history_sha=history_sha, book=str(book), market_id=str(market_id), info=info, outcome_ids=(outcome_ids[0], outcome_ids[1]), player_id=player_id, decision=decision, close=close, catalog_sha=catalog_sha)
                         rows.append(row)
                         counts["canonical_t30_pairs"] += 1
                         if row["replay_quote_fresh_180s"]:
                             counts["strict_replay_fresh_pairs"] += 1
                         if close is not None:
                             counts["paired_closes"] += 1
-
     out.mkdir(parents=True, exist_ok=True)
     with (out / "pit_pairs.jsonl").open("w", encoding="utf-8") as fh:
         for row in rows:
@@ -306,48 +292,27 @@ def build(root: Path, out: Path) -> dict[str, Any]:
 
 def self_test() -> int:
     cutoff = _parse_ts("2026-06-05T22:35:00Z")
-    left = _timeline({"players": {"0": [
-        {"createdAt": "2026-06-05T22:34:20Z", "price": 1.80, "active": True},
-        {"createdAt": "2026-06-05T22:34:50Z", "price": 1.82, "active": True},
-    ]}}, "0")
-    right = _timeline({"players": {"0": [
-        {"createdAt": "2026-06-05T22:34:28Z", "price": 2.05, "active": True},
-        {"createdAt": "2026-06-05T22:34:55Z", "price": 2.02, "active": True},
-    ]}}, "0")
+    left = _timeline({"players": {"0": [{"createdAt": "2026-06-05T22:34:20Z", "price": 1.80, "active": True}, {"createdAt": "2026-06-05T22:34:50Z", "price": 1.82, "active": True}]}}, "0")
+    right = _timeline({"players": {"0": [{"createdAt": "2026-06-05T22:34:28Z", "price": 2.05, "active": True}, {"createdAt": "2026-06-05T22:34:55Z", "price": 2.02, "active": True}]}}, "0")
     pair = _state_pair(left, right, cutoff=cutoff, max_age_seconds=CANONICAL_TOLERANCE_SECONDS)
     assert pair is not None
     assert pair[0]["_ts"] == _parse_ts("2026-06-05T22:34:50Z")
     assert pair[1]["_ts"] == _parse_ts("2026-06-05T22:34:55Z")
-
-    deactivated = _timeline({"players": {"0": [
-        {"createdAt": "2026-06-05T22:34:20Z", "price": 1.80, "active": True},
-        {"createdAt": "2026-06-05T22:34:58Z", "price": 1.80, "active": False},
-    ]}}, "0")
+    deactivated = _timeline({"players": {"0": [{"createdAt": "2026-06-05T22:34:20Z", "price": 1.80, "active": True}, {"createdAt": "2026-06-05T22:34:58Z", "price": 1.80, "active": False}]}}, "0")
     assert _state_at(deactivated, cutoff) is None
     assert _state_pair(deactivated, right, cutoff=cutoff, max_age_seconds=CANONICAL_TOLERANCE_SECONDS) is None
-
-    stale = _timeline({"players": {"0": [
-        {"createdAt": "2026-06-05T22:20:00Z", "price": 1.80, "active": True},
-    ]}}, "0")
+    stale = _timeline({"players": {"0": [{"createdAt": "2026-06-05T22:20:00Z", "price": 1.80, "active": True}]}}, "0")
     assert _state_pair(stale, right, cutoff=cutoff, max_age_seconds=CANONICAL_TOLERANCE_SECONDS) is None
-
-    skewed = _timeline({"players": {"0": [
-        {"createdAt": "2026-06-05T22:34:10Z", "price": 1.80, "active": True},
-    ]}}, "0")
+    skewed = _timeline({"players": {"0": [{"createdAt": "2026-06-05T22:34:10Z", "price": 1.80, "active": True}]}}, "0")
     assert _state_pair(skewed, right, cutoff=cutoff, max_age_seconds=CANONICAL_TOLERANCE_SECONDS) is None
-    assert _player_ids([
-        {"players": {"0": [], "44": []}},
-        {"players": {"0": [], "44": [], "55": []}},
-    ]) == ["0", "44"]
-    print(json.dumps({
-        "status": "SELF_TEST_OK",
-        "latest_state_only": "PASS",
-        "deactivation_guard": "PASS",
-        "early_only_t30": "PASS",
-        "paired_side_skew_30s": "PASS",
-        "no_single_side_inference": "PASS",
-        "player_identity_pairing": "PASS",
-    }))
+    assert _player_ids([{ "players": {"0": [], "44": []}}, {"players": {"0": [], "44": [], "55": []}}]) == ["0", "44"]
+    diag = []
+    counts = Counter()
+    parsed = _timeline({"players": {"0": [{"createdAt": "not-a-time", "price": 1.80, "active": True}]}}, "0", diagnostics=diag, context={"path": "history.json"}, counters=counts)
+    assert parsed == []
+    assert counts["invalid_quote_created_at"] == 1
+    assert diag and diag[0]["reason"].startswith("QUOTE_CREATED_AT_INVALID:")
+    print(json.dumps({"status": "SELF_TEST_OK", "latest_state_only": "PASS", "deactivation_guard": "PASS", "early_only_t30": "PASS", "paired_side_skew_30s": "PASS", "no_single_side_inference": "PASS", "player_identity_pairing": "PASS", "invalid_created_at_diagnostic": "PASS"}))
     return 0
 
 
