@@ -36,7 +36,7 @@ class PropsSweepTests(unittest.TestCase):
    bind_prop_market(sport="NFL",market="ANYTIME_TD",entity_id="x",model_probability=.62,offered_odds=-150,validation_passed=False)
  def test_one_sided_ev_without_invented_no_vig(self):
   b=bind_prop_market(sport="NFL",market="ANYTIME_TD",entity_id="x",model_probability=.62,offered_odds=-150,validation_passed=True)
-  self.assertEqual(b.market_no_vig_probability,NO_VIG_ONE_SIDED);self.assertGreater(b.expected_value_per_unit,0);self.assertFalse(b.official);self.assertFalse(b.staking_authority)
+  self.assertEqual(b.market_no_vig_probability,NO_VIG_ONE_SIDED);self.assertEqual(b.fair_american_odds,-163);self.assertGreater(b.expected_value_per_unit,0);self.assertFalse(b.official);self.assertFalse(b.staking_authority)
  def test_two_sided_devig_only_after_model_exists(self):
   b=bind_prop_market(sport="MLB",market="PITCHER_STRIKEOUTS",entity_id="p",model_probability=.58,offered_odds=-110,paired_other_side_odds=-110,validation_passed=True,line=5.5)
   self.assertAlmostEqual(b.market_no_vig_probability,.5,places=9)
