@@ -1,6 +1,8 @@
 import hashlib
+import json
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
 
 from scripts.capture_vsin_circa_contest_context import build_manifest, parse_summary
 
@@ -16,6 +18,20 @@ RAW = b"""
 
 
 class VsinContestContextTests(unittest.TestCase):
+    def test_policy_registers_sources_without_decision_authority(self):
+        policy = json.loads(Path("config/football_external_context_v1.json").read_text())
+        self.assertEqual(policy["policy_id"], "FOOTBALL_EXTERNAL_CONTEXT_V1")
+        authority = policy["authority"]
+        for key, value in authority.items():
+            self.assertFalse(value, key)
+        self.assertEqual(policy["sources"]["REDZONE_LABS"]["source_type"], "EXTERNAL_QUANTITATIVE_BENCHMARK")
+        contest = policy["sources"]["VSIN_CIRCA_FRIDAY_FOOTBALL_INVITATIONAL_2026"]
+        self.assertEqual(contest["source_type"], "HANDICAPPER_CONTEST_PICK_FREQUENCY")
+        self.assertIn("not sportsbook ticket", contest["semantics"].lower())
+        paper = policy["sources"]["ARXIV_2410_21484"]
+        self.assertFalse(paper["runtime_authority"])
+        self.assertTrue(policy["disagreement_log"]["enabled"])
+
     def test_summary_semantics(self):
         summary = parse_summary(RAW)
         self.assertEqual(summary["contest_week"], 1)
