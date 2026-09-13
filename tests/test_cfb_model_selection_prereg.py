@@ -37,13 +37,15 @@ class TestCFBModelSelectionPrereg(unittest.TestCase):
         self.assertIn("CANDIDATE_PREREGISTRATION_MISSING", out["blockers"])
         self.assertEqual(len(out["candidate_results"]), 4)
 
-    def test_all_four_complete_preregistered_candidates_make_first_evaluation_ready(self):
+    def test_config_only_specs_cannot_make_unimplemented_families_ready(self):
         policy = self.policy()
         prereg = {"candidates": {family: self.complete_candidate(family) for family in policy["candidate_families_predeclared"]}}
         out = audit_model_selection_prereg(policy, prereg)
-        self.assertEqual(out["status"], "READY_FOR_FIRST_EVALUATION")
-        self.assertEqual(out["blockers"], [])
-        self.assertTrue(all(row["complete"] for row in out["candidate_results"]))
+        self.assertEqual(out["status"], "BLOCKED_PREREG_INCOMPLETE")
+        baseline = out["candidate_results"][0]
+        self.assertNotIn("EXECUTABLE_FAMILY_IMPLEMENTATION_MISSING", baseline["blockers"])
+        for row in out["candidate_results"][1:]:
+            self.assertIn("EXECUTABLE_FAMILY_IMPLEMENTATION_MISSING", row["blockers"])
         self.assertFalse(out["attempt_consumed_by_this_audit"])
 
     def test_missing_hash_blocks_candidate(self):
