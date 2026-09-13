@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse, hashlib, json, urllib.request
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 
 UTC = timezone.utc
@@ -54,6 +55,7 @@ def _existing(root: Path) -> dict[str, dict]:
     return out
 
 
+@lru_cache(maxsize=16)
 def _schedule(date: str) -> list[dict]:
     raw = _get(f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={date}")
     payload = json.loads(raw)
@@ -99,6 +101,7 @@ def _attest(event_id: str, row: dict, game_pk: int) -> dict | None:
 
 
 def run(root: Path, lookback_days: int = 3) -> dict:
+    _schedule.cache_clear()
     events, existing = _archive_events(root, lookback_days), _existing(root)
     written = blocked = 0
     for event_id, row in events.items():
