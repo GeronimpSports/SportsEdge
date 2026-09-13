@@ -23,6 +23,9 @@
     "must_report_brier": true,
     "must_report_log_loss": true,
     "must_report_fold_stability": true,
+    "minimum_fold_win_rate": 0.6666666666666666,
+    "minimum_fold_wins": 4,
+    "ties_are_wins": false,
     "pass_requires_frozen_benchmark_rule": true
   },
   "joint_distribution_required": true,
