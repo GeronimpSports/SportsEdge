@@ -110,6 +110,80 @@ def _floor_key(market: str) -> str:
     return f"NFL_{resolved}"
 
 
+def _validate_bettor_facing_odds_snapshot(
+    payload: Mapping[str, Any],
+    *,
+    book_key: str,
+) -> Mapping[str, Any]:
+    """Reject ambiguous two-way sportsbook payloads before Model_P economics.
+
+    This guard lives outside the byte-frozen M2 compatibility surface. It is
+    applied to both operator-supplied snapshots and fetched snapshots by the
+    OFFICIAL-capable readiness path. The frozen run machine retains its exact
+    bytes/provenance while bettor-facing binding fails closed on duplicates.
+    """
+    if not isinstance(payload, Mapping):
+        raise NFLReadinessError("NFL_BINDING_ODDS_SNAPSHOT_INVALID")
+    events = payload.get("events")
+    if not isinstance(events, list) or not events:
+        raise NFLReadinessError("NFL_BINDING_ODDS_EVENTS_INVALID")
+    clean_book = str(book_key or "").strip().lower()
+    if not clean_book:
+        raise NFLReadinessError("NFL_BINDING_BOOK_KEY_REQUIRED")
+
+    for event in events:
+        if not isinstance(event, Mapping):
+            raise NFLReadinessError("NFL_BINDING_EVENT_INVALID")
+        event_home = str(event.get("home_team") or "").strip()
+        event_away = str(event.get("away_team") or "").strip()
+        if not event_home or not event_away or event_home == event_away:
+            raise NFLReadinessError("NFL_BINDING_EVENT_TEAMS_INVALID")
+        books = event.get("bookmakers")
+        if not isinstance(books, list):
+            raise NFLReadinessError("NFL_BINDING_BOOKMAKERS_INVALID")
+        matching_books = [
+            row for row in books
+            if isinstance(row, Mapping)
+            and str(row.get("key") or "").strip().lower() == clean_book
+        ]
+        if len(matching_books) != 1:
+            raise NFLReadinessError(f"NFL_BINDING_BOOKMAKER_COUNT_INVALID:{clean_book}")
+        markets = matching_books[0].get("markets")
+        if not isinstance(markets, list):
+            raise NFLReadinessError("NFL_BINDING_MARKETS_INVALID")
+
+        for market_key, expected_names in (
+            ("h2h", {event_home, event_away}),
+            ("spreads", {event_home, event_away}),
+            ("totals", {"over", "under"}),
+        ):
+            matching_markets = [
+                row for row in markets
+                if isinstance(row, Mapping)
+                and str(row.get("key") or "").strip().lower() == market_key
+            ]
+            if len(matching_markets) != 1:
+                raise NFLReadinessError(f"NFL_BINDING_MARKET_COUNT_INVALID:{market_key}")
+            outcomes = matching_markets[0].get("outcomes")
+            if not isinstance(outcomes, list) or len(outcomes) != 2:
+                raise NFLReadinessError(f"NFL_BINDING_OUTCOME_COUNT_INVALID:{market_key}")
+            if not all(isinstance(row, Mapping) for row in outcomes):
+                raise NFLReadinessError(f"NFL_BINDING_OUTCOME_INVALID:{market_key}")
+            if market_key == "totals":
+                names = [str(row.get("name") or "").strip().lower() for row in outcomes]
+                expected = expected_names
+            else:
+                names = [str(row.get("name") or "").strip() for row in outcomes]
+                expected = expected_names
+            if any(not name for name in names):
+                raise NFLReadinessError(f"NFL_BINDING_OUTCOME_NAME_MISSING:{market_key}")
+            if len(set(names)) != 2:
+                raise NFLReadinessError(f"NFL_BINDING_OUTCOME_DUPLICATE:{market_key}")
+            if set(names) != expected:
+                raise NFLReadinessError(f"NFL_BINDING_OUTCOME_PAIR_MISMATCH:{market_key}")
+    return payload
+
+
 def run_nfl_ready(
     *,
     promotion_registry: Mapping[str, Any],
@@ -141,7 +215,26 @@ def run_nfl_ready(
                 market=_floor_key(market), path=floor_path
             )
 
-    report = run_nfl_machine(**kwargs)
+    run_kwargs = dict(kwargs)
+    book_key = str(run_kwargs.get("book_key") or "draftkings")
+    supplied_odds = run_kwargs.get("odds_snapshot")
+    if supplied_odds is not None:
+        _validate_bettor_facing_odds_snapshot(supplied_odds, book_key=book_key)
+    original_fetcher = run_kwargs.get("odds_fetcher")
+    if original_fetcher is not None:
+        if not callable(original_fetcher):
+            raise NFLReadinessError("NFL_BINDING_ODDS_FETCHER_INVALID")
+
+        def validated_fetcher() -> Mapping[str, Any]:
+            fetched = original_fetcher()
+            if not isinstance(fetched, Mapping):
+                raise NFLReadinessError("NFL_BINDING_ODDS_FETCHER_OUTPUT_INVALID")
+            _validate_bettor_facing_odds_snapshot(fetched, book_key=book_key)
+            return fetched
+
+        run_kwargs["odds_fetcher"] = validated_fetcher
+
+    report = run_nfl_machine(**run_kwargs)
     resolved_results: list[NFLMachineResult] = []
     truth_gate_rows = 0
     official_bets = 0
