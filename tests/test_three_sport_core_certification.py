@@ -39,7 +39,6 @@ class ThreeSportCoreCertificationTests(unittest.TestCase):
             (p / "derived_status.json").write_text(json.dumps({"markets": gates}))
             report = audit(root)
             self.assertEqual(report["sports"]["MLB"]["status"], "CORE_GATES_PASS")
-            # Passing MLB alone must never certify all three sports.
             self.assertFalse(report["all_three_core_certified"])
 
     def test_cfb_forward_snapshot_never_substitutes_for_historical_pit(self):
@@ -50,8 +49,25 @@ class ThreeSportCoreCertificationTests(unittest.TestCase):
             (snap / "readiness.json").write_text(json.dumps({"status": "AVAILABLE"}))
             report = audit(root)
             self.assertEqual(report["sports"]["CFB"]["latest_forward_pit_status"], "AVAILABLE")
+            self.assertEqual(report["sports"]["CFB"]["latest_forward_pit_status_source"], "readiness.json")
             self.assertFalse(report["sports"]["CFB"]["historical_pit_training_bundle_present"])
             self.assertEqual(report["sports"]["CFB"]["status"], "BLOCKED_HISTORICAL_PIT_TRAINING_BUNDLE_MISSING")
+
+    def test_current_cfb_capture_classification_is_reported_without_promotion(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            snap = root / "history/cfb/forward-pit/20260912T150619Z-test/capture"
+            snap.mkdir(parents=True)
+            (snap / "classification.json").write_text(json.dumps({
+                "pit_classification": "FORWARD_SOURCE_SNAPSHOT_FROM_RETRIEVAL_TIME_ONLY",
+                "promotion_evidence": False,
+                "retroactive_point_in_time_claim": False,
+            }))
+            report = audit(root)
+            cfb = report["sports"]["CFB"]
+            self.assertEqual(cfb["latest_forward_pit_status"], "FORWARD_SOURCE_SNAPSHOT_FROM_RETRIEVAL_TIME_ONLY")
+            self.assertEqual(cfb["latest_forward_pit_status_source"], "capture/classification.json")
+            self.assertEqual(cfb["status"], "BLOCKED_HISTORICAL_PIT_TRAINING_BUNDLE_MISSING")
 
 
 if __name__ == "__main__":
