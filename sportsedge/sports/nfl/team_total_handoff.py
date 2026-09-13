@@ -1,7 +1,7 @@
 """Research-only pre-odds joint-score handoff for NFL team-total derivatives.
 
 The canonical frozen NFL run machine intentionally does not expose its joint
-score rows.  This module reproduces the *same* market-blind distribution boundary
+score rows. This module reproduces the *same* market-blind distribution boundary
 without modifying that frozen surface: it uses the canonical bound-model loader,
 PIT live-feature validator, score-distribution function, and distribution hash.
 
@@ -20,8 +20,10 @@ from .run_machine import (
     DEFAULT_FEATURE_TTL_SECONDS,
     NFLMachineReport,
     NFLRunMachineError,
+    _aware,
     _distribution_hash,
     _load_bound_model,
+    _positive_int,
     _validate_live_features,
 )
 
@@ -49,6 +51,8 @@ def build_team_total_distribution_handoff(
 ) -> dict[str, Any]:
     """Create market-blind score rows before sportsbook acquisition/binding."""
     try:
+        current = _aware(now, "NFL_NOW_TIMEZONE_REQUIRED")
+        feature_ttl = _positive_int(feature_ttl_seconds, "NFL_FEATURE_TTL_INVALID")
         model, artifact_sha, code_sha, training_sha = _load_bound_model(
             model_artifact,
             expected_model_artifact_sha256=expected_model_artifact_sha256,
@@ -56,8 +60,8 @@ def build_team_total_distribution_handoff(
         )
         live_sha, live_asof, games = _validate_live_features(
             live_features,
-            current=now,
-            feature_ttl_seconds=feature_ttl_seconds,
+            current=current,
+            feature_ttl_seconds=feature_ttl,
         )
     except (NFLRunMachineError, ValueError) as exc:
         raise _fail(str(exc)) from exc
