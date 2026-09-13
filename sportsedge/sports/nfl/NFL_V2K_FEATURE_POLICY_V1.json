@@ -2,7 +2,7 @@
   "schema": "SPORTSEDGE_NFL_V2K_FEATURE_POLICY_V1",
   "status": "FROZEN_RESEARCH_ONLY",
   "authority": {"model_p": false, "promotion": false, "official": false},
-  "training_row_fields": ["game_id", "kickoff_utc", "offense", "start_yard", "outcome"],
+  "training_row_fields": ["game_id", "drive_id", "kickoff_utc", "offense", "defense", "start_yard", "outcome"],
   "fit_features": ["team_game_possession_count", "drive_start_yard", "drive_terminal_outcome", "game_scoring_environment"],
   "field_position_contract": {
     "field": "start_yard",
@@ -26,12 +26,17 @@
     "shared_efficiency_sd": "sample_standard_deviation_of_training_game_logits",
     "serving_override_allowed": false
   },
+  "identity_contract": {
+    "unique_drive_key": ["game_id", "drive_id"],
+    "offense_must_differ_from_defense": true,
+    "identity_fields_are_not_model_features": true
+  },
   "allowed_drive_outcomes": ["TD", "FG", "TURNOVER", "PUNT_OTHER", "SAFETY", "DEF_ST_TD"],
-  "source_identity_fields": ["game_id", "drive", "drive_id", "posteam", "offense", "kickoff_utc"],
+  "source_identity_fields": ["game_id", "drive", "drive_id", "posteam", "offense", "defteam", "defense", "kickoff_utc"],
   "source_value_fields": ["start_yard", "drive_result", "result", "def_st_td"],
   "prohibited_feature_families": ["sportsbook_price_or_line", "betting_split_or_handle", "capper_or_consensus_opinion", "postgame_or_future_information", "2026_forward_outcome", "feature_computed_using_rows_at_or_after_prediction_cutoff"],
   "missing_required_feature_behavior": "BLOCK",
   "unknown_drive_result_behavior": "BLOCK",
   "train_serve_transform_contract": "IDENTICAL",
-  "notes": "Frozen before the first untouched V2K evaluation. Field-position-conditioned drive outcomes and shared game-state dispersion are estimated only from PIT-safe training rows. Additional raw columns may be physically present but are not model inputs unless a new preregistered candidate policy explicitly adds them."
+  "notes": "Frozen before the first untouched V2K evaluation. Field-position-conditioned drive outcomes and shared game-state dispersion are estimated only from PIT-safe training rows. Drive and opponent identities are retained for audit/integrity checks only and are not model features. Additional raw columns may be physically present but are not model inputs unless a new preregistered candidate policy explicitly adds them."
 }
