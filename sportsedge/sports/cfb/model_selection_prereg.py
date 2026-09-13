@@ -1,142 +1,48 @@
-"""Fail-closed preregistration gate for CFB model-selection attempts.
-
-This module does not fit or evaluate a model and cannot consume an attempt. It
-verifies that every candidate specification required by the frozen
-CFB_MODEL_SELECTION_POLICY_V1 is complete *and* has executable family code before
-any evaluation is allowed.
-"""
+"""Fail-closed preregistration gate for CFB model-selection attempts."""
 from __future__ import annotations
-
 import re
 from typing import Any, Mapping
-
-from .candidate_families import IMPLEMENTED_FAMILIES
-
-_SHA256 = re.compile(r"^[0-9a-f]{64}$")
-REQUIRED_SPEC_FIELDS = (
-    "formula",
-    "feature_list",
-    "weighting_blending_constants",
-    "training_window",
-    "hyperparameter_policy",
-    "source_contract_identity",
-    "code_sha256",
-    "config_sha256",
-)
-
-
-def _nonempty_string(value: object) -> bool:
-    return isinstance(value, str) and bool(value.strip())
-
-
-def _sha(value: object) -> bool:
-    return isinstance(value, str) and _SHA256.fullmatch(value.strip().lower()) is not None
-
-
-def _candidate_blockers(candidate: Mapping[str, Any], family: str) -> list[str]:
-    blockers: list[str] = []
-    if family not in IMPLEMENTED_FAMILIES:
-        blockers.append("EXECUTABLE_FAMILY_IMPLEMENTATION_MISSING")
-    if candidate.get("family") != family:
-        blockers.append("FAMILY_IDENTITY_MISMATCH")
-    if candidate.get("status") != "PREREGISTERED_UNEVALUATED":
-        blockers.append("STATUS_MUST_BE_PREREGISTERED_UNEVALUATED")
-    if not _nonempty_string(candidate.get("formula")):
-        blockers.append("FORMULA_MISSING")
-    features = candidate.get("feature_list")
-    if not isinstance(features, list) or not features or not all(_nonempty_string(x) for x in features):
-        blockers.append("FEATURE_LIST_MISSING_OR_EMPTY")
-    if not isinstance(candidate.get("weighting_blending_constants"), Mapping):
-        blockers.append("WEIGHTING_BLENDING_CONSTANTS_MISSING")
-    if not isinstance(candidate.get("training_window"), Mapping) or not candidate.get("training_window"):
-        blockers.append("TRAINING_WINDOW_MISSING")
-    if not isinstance(candidate.get("hyperparameter_policy"), Mapping) or not candidate.get("hyperparameter_policy"):
-        blockers.append("HYPERPARAMETER_POLICY_MISSING")
-    if not _nonempty_string(candidate.get("source_contract_identity")):
-        blockers.append("SOURCE_CONTRACT_IDENTITY_MISSING")
-    if not _sha(candidate.get("code_sha256")):
-        blockers.append("CODE_SHA256_MISSING_OR_INVALID")
-    if not _sha(candidate.get("config_sha256")):
-        blockers.append("CONFIG_SHA256_MISSING_OR_INVALID")
-    forbidden = {"selection_metric_value", "rmse", "evaluation_result", "winner", "null_threshold"}
-    if any(key in candidate for key in forbidden):
-        blockers.append("POST_EVALUATION_FIELD_PRESENT_IN_PREREGISTRATION")
-    return blockers
-
-
-def audit_model_selection_prereg(
-    policy: Mapping[str, Any],
-    preregistration: Mapping[str, Any] | None,
-) -> dict[str, Any]:
-    """Return deterministic readiness without fitting, scoring, or spending an attempt."""
-    blockers: list[str] = []
-    if policy.get("schema") != "CFB_MODEL_SELECTION_POLICY_V1":
-        blockers.append("POLICY_SCHEMA_MISMATCH")
-    if policy.get("status") != "FROZEN_BEFORE_CANDIDATE_EVALUATION":
-        blockers.append("POLICY_NOT_FROZEN_BEFORE_EVALUATION")
-
-    try:
-        budget = int(policy.get("candidate_attempt_budget"))
-        attempts = int(policy.get("attempts_consumed"))
-    except (TypeError, ValueError):
-        budget, attempts = -1, -1
-        blockers.append("ATTEMPT_ACCOUNTING_INVALID")
-
-    families = policy.get("candidate_families_predeclared")
-    if not isinstance(families, list) or not families or not all(_nonempty_string(x) for x in families):
-        families = []
-        blockers.append("PREDECLARED_FAMILIES_INVALID")
-    if budget != len(families):
-        blockers.append("ATTEMPT_BUDGET_FAMILY_COUNT_MISMATCH")
-    if attempts < 0 or attempts > budget:
-        blockers.append("ATTEMPTS_CONSUMED_OUT_OF_RANGE")
-
-    candidate_results: list[dict[str, Any]] = []
-    specs = None if preregistration is None else preregistration.get("candidates")
-    if not isinstance(specs, Mapping):
-        blockers.append("CANDIDATE_PREREGISTRATION_MISSING")
-        specs = {}
-
-    extra = sorted(set(str(k) for k in specs) - set(str(x) for x in families))
-    if extra:
-        blockers.append("UNDECLARED_CANDIDATE_FAMILY_PRESENT")
-
+from .candidate_registry_v2 import IMPLEMENTED_FAMILIES
+_SHA256=re.compile(r"^[0-9a-f]{64}$")
+REQUIRED_SPEC_FIELDS=("formula","feature_list","weighting_blending_constants","training_window","hyperparameter_policy","source_contract_identity","code_sha256","config_sha256")
+def _nonempty_string(v): return isinstance(v,str) and bool(v.strip())
+def _sha(v): return isinstance(v,str) and _SHA256.fullmatch(v.strip().lower()) is not None
+def _candidate_blockers(c:Mapping[str,Any],family:str):
+    b=[]
+    if family not in IMPLEMENTED_FAMILIES:b.append("EXECUTABLE_FAMILY_IMPLEMENTATION_MISSING")
+    if c.get("family")!=family:b.append("FAMILY_IDENTITY_MISMATCH")
+    if c.get("status")!="PREREGISTERED_UNEVALUATED":b.append("STATUS_MUST_BE_PREREGISTERED_UNEVALUATED")
+    if not _nonempty_string(c.get("formula")):b.append("FORMULA_MISSING")
+    f=c.get("feature_list")
+    if not isinstance(f,list) or not f or not all(_nonempty_string(x) for x in f):b.append("FEATURE_LIST_MISSING_OR_EMPTY")
+    if not isinstance(c.get("weighting_blending_constants"),Mapping):b.append("WEIGHTING_BLENDING_CONSTANTS_MISSING")
+    if not isinstance(c.get("training_window"),Mapping) or not c.get("training_window"):b.append("TRAINING_WINDOW_MISSING")
+    if not isinstance(c.get("hyperparameter_policy"),Mapping) or not c.get("hyperparameter_policy"):b.append("HYPERPARAMETER_POLICY_MISSING")
+    if not _nonempty_string(c.get("source_contract_identity")):b.append("SOURCE_CONTRACT_IDENTITY_MISSING")
+    if not _sha(c.get("code_sha256")):b.append("CODE_SHA256_MISSING_OR_INVALID")
+    if not _sha(c.get("config_sha256")):b.append("CONFIG_SHA256_MISSING_OR_INVALID")
+    if any(k in c for k in {"selection_metric_value","rmse","evaluation_result","winner","null_threshold"}):b.append("POST_EVALUATION_FIELD_PRESENT_IN_PREREGISTRATION")
+    return b
+def audit_model_selection_prereg(policy:Mapping[str,Any],preregistration:Mapping[str,Any]|None):
+    b=[]
+    if policy.get("schema")!="CFB_MODEL_SELECTION_POLICY_V1":b.append("POLICY_SCHEMA_MISMATCH")
+    if policy.get("status")!="FROZEN_BEFORE_CANDIDATE_EVALUATION":b.append("POLICY_NOT_FROZEN_BEFORE_EVALUATION")
+    try: budget,attempts=int(policy.get("candidate_attempt_budget")),int(policy.get("attempts_consumed"))
+    except (TypeError,ValueError): budget,attempts=-1,-1;b.append("ATTEMPT_ACCOUNTING_INVALID")
+    families=policy.get("candidate_families_predeclared")
+    if not isinstance(families,list) or not families or not all(_nonempty_string(x) for x in families):families=[];b.append("PREDECLARED_FAMILIES_INVALID")
+    if budget!=len(families):b.append("ATTEMPT_BUDGET_FAMILY_COUNT_MISMATCH")
+    if attempts<0 or attempts>budget:b.append("ATTEMPTS_CONSUMED_OUT_OF_RANGE")
+    specs=None if preregistration is None else preregistration.get("candidates")
+    if not isinstance(specs,Mapping):b.append("CANDIDATE_PREREGISTRATION_MISSING");specs={}
+    if set(map(str,specs))-set(map(str,families)):b.append("UNDECLARED_CANDIDATE_FAMILY_PRESENT")
+    rows=[]
     for family in families:
-        candidate = specs.get(family)
-        if not isinstance(candidate, Mapping):
-            row_blockers = ["CANDIDATE_SPEC_MISSING"]
-            if family not in IMPLEMENTED_FAMILIES:
-                row_blockers.append("EXECUTABLE_FAMILY_IMPLEMENTATION_MISSING")
-        else:
-            row_blockers = _candidate_blockers(candidate, family)
-        if row_blockers:
-            blockers.append(f"CANDIDATE_INCOMPLETE:{family}")
-        candidate_results.append({
-            "family": family,
-            "complete": not row_blockers,
-            "executable": family in IMPLEMENTED_FAMILIES,
-            "blockers": row_blockers,
-        })
-
-    ready = not blockers and attempts == 0
-    if attempts != 0:
-        blockers.append("FIRST_EVALUATION_GATE_REQUIRES_ZERO_ATTEMPTS_CONSUMED")
-        ready = False
-
-    return {
-        "schema": "CFB_MODEL_SELECTION_PREREG_AUDIT_V1",
-        "status": "READY_FOR_FIRST_EVALUATION" if ready else "BLOCKED_PREREG_INCOMPLETE",
-        "candidate_attempt_budget": budget,
-        "attempts_consumed": attempts,
-        "implemented_families": sorted(IMPLEMENTED_FAMILIES),
-        "candidate_results": candidate_results,
-        "blockers": blockers,
-        "attempt_consumed_by_this_audit": False,
-        "model_fit_performed": False,
-        "model_p_created": False,
-        "promotion_authority": False,
-        "eligibility_changed": False,
-    }
-
-
-__all__ = ["audit_model_selection_prereg", "REQUIRED_SPEC_FIELDS"]
+        c=specs.get(family); rb=["CANDIDATE_SPEC_MISSING"] if not isinstance(c,Mapping) else _candidate_blockers(c,family)
+        if family not in IMPLEMENTED_FAMILIES and "EXECUTABLE_FAMILY_IMPLEMENTATION_MISSING" not in rb:rb.append("EXECUTABLE_FAMILY_IMPLEMENTATION_MISSING")
+        if rb:b.append(f"CANDIDATE_INCOMPLETE:{family}")
+        rows.append({"family":family,"complete":not rb,"executable":family in IMPLEMENTED_FAMILIES,"blockers":rb})
+    ready=not b and attempts==0
+    if attempts!=0:b.append("FIRST_EVALUATION_GATE_REQUIRES_ZERO_ATTEMPTS_CONSUMED");ready=False
+    return {"schema":"CFB_MODEL_SELECTION_PREREG_AUDIT_V1","status":"READY_FOR_FIRST_EVALUATION" if ready else "BLOCKED_PREREG_INCOMPLETE","candidate_attempt_budget":budget,"attempts_consumed":attempts,"implemented_families":sorted(IMPLEMENTED_FAMILIES),"candidate_results":rows,"blockers":b,"attempt_consumed_by_this_audit":False,"model_fit_performed":False,"model_p_created":False,"promotion_authority":False,"eligibility_changed":False}
+__all__=["audit_model_selection_prereg","REQUIRED_SPEC_FIELDS"]
