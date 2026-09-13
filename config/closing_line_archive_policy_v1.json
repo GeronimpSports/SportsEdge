@@ -1,10 +1,10 @@
 {
   "policy_id": "CLOSING_LINE_ARCHIVE_V1",
-  "status": "ACTIVE",
+  "status": "SUPERSEDED_BY_CLOSING_LINE_ARCHIVE_V2",
   "evidence_class": "NOT_EVIDENCE",
   "promotion_authority": false,
   "evidence_clock_authority": false,
-  "doctrine": "Model-free two-sided price archival for NFL, CFB, MLB and UFC/MMA. This lane observes prices only. It contains no Model_P, no evidence_unit_id, and no decision. It can never be promoted, can never start or extend a promotion evidence clock, and can never be substituted for FOOTBALL_FORWARD_CAPTURE_V2, MLB replay evidence, or UFC promotion evidence. Its sole purpose is to accumulate a closing-line dataset that does not currently exist in any free source. The t0_prestart window is a final scheduled-start-adjacent observation only and is valid solely while commence_time is still strictly in the future.",
+  "doctrine": "Superseded. V1 relied on provider commence_time as a pre-start gate and had overlapping windows whose resolution depended on JSON iteration order. It must not be used for new capture. Historical V1 rows remain immutable NOT_EVIDENCE and require separate actual-start adjudication before any pre-start classification.",
   "sports": {
     "NFL": "americanfootball_nfl",
     "CFB": "americanfootball_ncaaf",
