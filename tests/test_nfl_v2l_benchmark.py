@@ -19,6 +19,18 @@ def test_capture_after_kickoff_blocks():
     with pytest.raises(ValueError):
         build_m1_benchmark(captures=[cap(captured_at_utc="2025-09-01T18:00:00+00:00")],benchmark_policy_sha256=H,benchmark_source_manifest_sha256=M)
 
+def test_equivalent_offset_is_compared_by_instant():
+    with pytest.raises(ValueError):
+        build_m1_benchmark(captures=[cap(captured_at_utc="2025-09-01T13:00:00-04:00",kickoff_utc="2025-09-01T17:00:00Z")],benchmark_policy_sha256=H,benchmark_source_manifest_sha256=M)
+
+def test_naive_timestamp_blocks():
+    with pytest.raises(ValueError):
+        build_m1_benchmark(captures=[cap(captured_at_utc="2025-09-01T12:00:00")],benchmark_policy_sha256=H,benchmark_source_manifest_sha256=M)
+
+def test_invalid_american_odds_blocks():
+    with pytest.raises(ValueError):
+        build_m1_benchmark(captures=[cap(home_ml=-95)],benchmark_policy_sha256=H,benchmark_source_manifest_sha256=M)
+
 def test_missing_capture_blocks_fold():
     e=build_m1_benchmark(captures=[cap()],benchmark_policy_sha256=H,benchmark_source_manifest_sha256=M)
     with pytest.raises(ValueError): fold_joint_score_rmse(evidence=e,game_ids=["g2"],actual_scores={"g2":[20,17]})
