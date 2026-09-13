@@ -1,0 +1,48 @@
+{
+  "admission_conditions": {
+    "approved_policy_must_equal": "MODERN_REG_2018_2025",
+    "bettor_facing_authority_requires_separate_release_bridge": true,
+    "market_features_forbidden_in_model_fit": true,
+    "release_bridge_issue": 608,
+    "untouched_readout_remains_blocked_until_preregistered_folds_sources_features_rng_simulation_count_thresholds_are_frozen": true,
+    "uploaded_demo_coefficients_as_fitted_parameters_forbidden": true,
+    "v2_reference_status_must_be_frozen_ready": true
+  },
+  "attempt_budget": {
+    "attempt_consumed_by_activation": false,
+    "attempts_used": 0,
+    "first_materially_different_fitted_specification_evaluated_on_development_validation_consumes_attempt_1": true,
+    "max_development_attempts": 5
+  },
+  "authority": {
+    "model_p": false,
+    "official": false,
+    "pricing": false,
+    "promotion": false,
+    "research_implementation": true,
+    "run_it": false,
+    "staking": false,
+    "untouched_readout": false
+  },
+  "bindings": {
+    "activation_builder_sha256": "b8d779ea66c0251b426fe37c97d4b0292a3f10585085ced1e974557179ce9d5b",
+    "frozen_v1_reference_git_blob_sha1": "29f351d7ca37346795a8ce8e3cca8b01eda7914e",
+    "frozen_v2_reference_sha256": "03710b26734ffbdf5c41e6f922a59874a20211a74a06d9718933b2e7c8bde0da",
+    "preregistration_git_blob_sha1": "f8487883186fc85b77f4e632b1aa710327473b8a",
+    "report_only_v2_proposal_git_blob_sha1": "2109c6d7546bbbed2b5c587eb13fd52d9325f488",
+    "v1_attempt_ledger_git_blob_sha1": "14022680891de3c3d73013ffabc8aee4611e86e6"
+  },
+  "candidate_family": "NFL_V2K_DRIVE_HIERARCHICAL_JOINT_G1",
+  "effective_only_when_merged_to_main": true,
+  "human_approval": {
+    "decision": "SELECT_MODERN_REG_2018_2025",
+    "frozen_v1_rewrite_forbidden": true,
+    "recorded_date": "2026-09-13",
+    "source_comment_body_sha256": "eaca7bdc5b71f4b08b3ab6a54acda9d292d1f1443d21f3499a5e43b528a95ead",
+    "source_comment_id": 5654266444,
+    "source_pr": 587,
+    "versioned_activation_only": true
+  },
+  "schema": "NFL_V2K_IMPLEMENTATION_ADMISSION_V2",
+  "status": "ADMITTED_RESEARCH_IMPLEMENTATION_ONLY"
+}
