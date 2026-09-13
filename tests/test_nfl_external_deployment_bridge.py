@@ -12,7 +12,7 @@ class NFLExternalDeploymentBridgeTests(unittest.TestCase):
         return {"provenance":"REAL_PUBLIC_HISTORY","source_sha256":"a"*64,"code_git_sha":"1"*40,"profile_version":"nfl-key-emergent-v3","key_number_contract":"EMERGENT_VALIDATION_TARGET_V1","seasons":[2018,2019,2020,2021,2022,2023],"key_numbers":[-7,-3,3,7],"per_key_abs_error":{"-7":0.002,"-3":0.003,"3":0.002,"7":0.004},"max_allowed_abs_error":0.005}
 
     def _history(self):
-        return {"provenance":"REAL_PUBLIC_HISTORY","source_sha256":"a"*64,"source_manifest_sha256":"a"*64,"code_git_sha":"1"*40,"model_id":PRODUCTION_NFL_M2_MODEL_ID,"feature_contract":NFL_M2_FEATURE_CONTRACT,"promotion_evidence":{"spread":{"fold_wins":7,"fold_total":10,"fold_win_rate":0.7,"calibration":{"pass":True,"max_bin_deviation":0.03,"threshold":0.05}}}}
+        return {"provenance":"REAL_PUBLIC_HISTORY","source_sha256":"a"*64,"source_manifest_sha256":"a"*64,"code_git_sha":"1"*40,"model_id":PRODUCTION_NFL_M2_MODEL_ID,"feature_contract":NFL_M2_FEATURE_CONTRACT,"promotion_evidence":{"spread":{"fold_wins":7,"fold_total":10,"fold_win_rate":0.7,"calibration":{"pass":True,"max_bin_deviation":0.03,"threshold":0.05,"n":200,"bins":[{"n":50,"mean_probability":0.20,"empirical_rate":0.20},{"n":50,"mean_probability":0.40,"empirical_rate":0.40},{"n":50,"mean_probability":0.60,"empirical_rate":0.60},{"n":50,"mean_probability":0.80,"empirical_rate":0.80}]}}}}
 
     def _ci(self):
         return {"schema_version":1,"workflow_name":"football-nfl-promotion-evidence","workflow_conclusion":"success","workflow_run_id":123,"git_sha":"1"*40,"source_manifest_sha256":"a"*64,"model_id":PRODUCTION_NFL_M2_MODEL_ID,"feature_contract":NFL_M2_FEATURE_CONTRACT,"model_artifact_sha256":self.MODEL_HASH,"verified_artifact_count":8}

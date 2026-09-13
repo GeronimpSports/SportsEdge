@@ -17,6 +17,7 @@ import re
 from typing import Any
 
 from sportsedge.core.promotion.football import evaluate_football_promotion_from_math_artifact
+from sportsedge.core.validation.calibration_truth_gate import evaluate_calibration_truth_gate
 from sportsedge.core.validation.math_attestation import attest_validated_math
 from sportsedge.sports.nfl.m2 import NFL_M2_FEATURE_CONTRACT, PRODUCTION_NFL_M2_MODEL_ID
 
@@ -163,8 +164,15 @@ def _verify_ci_attestation(
     }
 
 
-def _reason(*, stage: str, history: Mapping[str, Any] | None, calibration: Mapping[str, Any] | None,
-            ci_attested: bool, clv: Mapping[str, Any] | None) -> str:
+def _reason(
+    *,
+    stage: str,
+    history: Mapping[str, Any] | None,
+    calibration: Mapping[str, Any] | None,
+    calibration_truth_gate: Mapping[str, Any] | None,
+    ci_attested: bool,
+    clv: Mapping[str, Any] | None,
+) -> str:
     if stage == "BLOCKED_MATH":
         return "MATH_ATTESTATION_FAILED"
     if stage == "VALIDATED_MATH":
@@ -172,8 +180,10 @@ def _reason(*, stage: str, history: Mapping[str, Any] | None, calibration: Mappi
     if stage == "PRODUCTION_LOGIC_PASS":
         if calibration is None:
             return "CALIBRATION_EVIDENCE_MISSING"
-        if calibration.get("pass") is not True:
-            return "CALIBRATION_GATE_FAILED"
+        if calibration_truth_gate is None:
+            return "STRICT_CALIBRATION_GATE_MISSING"
+        if calibration_truth_gate.get("pass") is not True:
+            return f"CALIBRATION_GATE_FAILED:{calibration_truth_gate.get('reason', 'UNKNOWN')}"
         if not ci_attested:
             return "CI_ATTESTATION_MISSING"
         return "CI_OR_CALIBRATION_GATE_NOT_ATTESTED"
@@ -329,25 +339,35 @@ def build_nfl_promotion_registry(
         if fold_wins < 0 or fold_total < 0 or fold_wins > fold_total:
             raise ValueError(f"NFL_FOLD_EVIDENCE_INVALID:{market}")
 
+        calibration_truth_gate: dict[str, Any] | None = None
         if calibration is None:
             calibration_max, calibration_threshold = 1.0, 0.0
         else:
-            calibration_pass = calibration.get("pass")
-            if not isinstance(calibration_pass, bool):
+            legacy_pass = calibration.get("pass")
+            if not isinstance(legacy_pass, bool):
                 raise ValueError(f"NFL_CALIBRATION_EVIDENCE_INVALID:{market}")
-            calibration_max = _finite_float(
+            legacy_max = _finite_float(
                 calibration.get("max_bin_deviation"),
                 f"NFL_CALIBRATION_EVIDENCE_INVALID:{market}",
             )
-            calibration_threshold = _finite_float(
+            legacy_threshold = _finite_float(
                 calibration.get("threshold"),
                 f"NFL_CALIBRATION_EVIDENCE_INVALID:{market}",
             )
-            if calibration_max < 0 or calibration_threshold < 0:
+            if legacy_max < 0 or legacy_threshold < 0:
                 raise ValueError(f"NFL_CALIBRATION_EVIDENCE_INVALID:{market}")
-            computed_pass = calibration_max <= calibration_threshold
-            if calibration_pass is not computed_pass:
+            legacy_computed_pass = legacy_max <= legacy_threshold
+            if legacy_pass is not legacy_computed_pass:
                 raise ValueError(f"NFL_CALIBRATION_PASS_CONTRADICTION:{market}")
+
+            strict_result = evaluate_calibration_truth_gate(calibration)
+            calibration_truth_gate = strict_result.to_dict()
+            # The shared football state machine currently accepts a scalar
+            # calibration comparison. Encode the strict boolean into that
+            # compatibility boundary so NFL advancement is governed only by
+            # the strict n/slope/intercept/ECE gate, not the legacy max-bin rule.
+            calibration_max = 0.0 if strict_result.pass_gate else 1.0
+            calibration_threshold = 0.0
 
         logged_plays = int(clv.get("logged_plays", 0)) if clv is not None else 0
         mean_clv = _finite_float(
@@ -377,13 +397,18 @@ def build_nfl_promotion_registry(
             "stage": stage,
             "eligible": stage == "DEPLOYED",
             "reason": _reason(
-                stage=stage, history=history, calibration=calibration,
-                ci_attested=ci_attested, clv=clv,
+                stage=stage,
+                history=history,
+                calibration=calibration,
+                calibration_truth_gate=calibration_truth_gate,
+                ci_attested=ci_attested,
+                clv=clv,
             ),
             "fold_wins": fold_wins,
             "fold_total": fold_total,
             "fold_win_rate": (fold_wins / fold_total) if fold_total else None,
             "calibration": dict(calibration) if calibration is not None else None,
+            "calibration_truth_gate": calibration_truth_gate,
             "ci_attested": ci_attested,
             "clv": dict(clv) if clv is not None else None,
         }

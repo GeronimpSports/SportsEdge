@@ -31,7 +31,18 @@ class NFLCLVCountReconciliationTests(unittest.TestCase):
                     "fold_wins": 7,
                     "fold_total": 10,
                     "fold_win_rate": 0.7,
-                    "calibration": {"pass": True, "max_bin_deviation": 0.03, "threshold": 0.05},
+                    "calibration": {
+                        "pass": True,
+                        "max_bin_deviation": 0.03,
+                        "threshold": 0.05,
+                        "n": 200,
+                        "bins": [
+                            {"n": 50, "mean_probability": 0.20, "empirical_rate": 0.20},
+                            {"n": 50, "mean_probability": 0.40, "empirical_rate": 0.40},
+                            {"n": 50, "mean_probability": 0.60, "empirical_rate": 0.60},
+                            {"n": 50, "mean_probability": 0.80, "empirical_rate": 0.80},
+                        ],
+                    },
                 }
             },
         }
