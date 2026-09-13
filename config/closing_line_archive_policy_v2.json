@@ -1,0 +1,40 @@
+{
+  "policy_id": "CLOSING_LINE_ARCHIVE_V2",
+  "status": "ACTIVE",
+  "evidence_class": "NOT_EVIDENCE",
+  "promotion_authority": false,
+  "evidence_clock_authority": false,
+  "doctrine": "Model-free two-sided price archival for NFL, CFB, MLB and UFC/MMA. Scheduled commence_time is a capture-planning hint only and never establishes actual pre-start status. Every captured row is UNADJUDICATED until a separate immutable actual-start attestation is available. This lane creates no Model_P, evidence_unit_id, decision, promotion authority, eligibility, Truth Gate PASS, or evidence clock.",
+  "sports": {
+    "NFL": "americanfootball_nfl",
+    "CFB": "americanfootball_ncaaf",
+    "MLB": "baseball_mlb",
+    "UFC": "mma_mixed_martial_arts"
+  },
+  "books": ["draftkings", "pinnacle"],
+  "markets": ["h2h", "spreads", "totals"],
+  "regions": "us,eu",
+  "odds_format": "american",
+  "windows": {
+    "close": {"min_lead_minutes": 2, "max_lead_minutes": 20, "min_inclusive": true, "max_inclusive": true},
+    "t0_candidate": {"min_lead_minutes": -30, "max_lead_minutes": 2, "min_inclusive": true, "max_inclusive": false},
+    "decision": {"min_lead_minutes": 45, "max_lead_minutes": 120, "min_inclusive": true, "max_inclusive": true}
+  },
+  "window_priority": ["close", "t0_candidate", "decision"],
+  "event_index_endpoint_is_free": true,
+  "persistence": {
+    "branch": "data",
+    "path_template": "archive/closing-lines/{sport_key}/{date}.ndjson",
+    "start_attestation_path_template": "archive/closing-line-start-attestations/{sport_key}/{date}.ndjson",
+    "append_only": true,
+    "duplicate_key": ["sport_key", "event_id", "book", "market", "outcome", "point", "window", "captured_at"]
+  },
+  "integrity": {
+    "two_sided_required": true,
+    "scheduled_commence_is_not_actual_start": true,
+    "actual_prestart_requires_start_attestation": true,
+    "never_overwrite_captured_price": true,
+    "missing_capture_is_recorded_not_imputed": true,
+    "post_scheduled_capture_is_unadjudicated": true
+  }
+}
