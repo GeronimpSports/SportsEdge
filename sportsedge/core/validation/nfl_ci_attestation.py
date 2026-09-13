@@ -63,7 +63,12 @@ def verify_nfl_pre_ci_bundle(
     workflow_head_sha: str,
     workflow_run_id: int,
 ) -> dict[str, Any]:
-    """Verify exact upstream-run identity plus all pre-CI evidence/model bytes."""
+    """Verify exact upstream-run identity plus all pre-CI evidence/model bytes.
+
+    Evidence-manifest V2 remains valid for historical bundles. V3 is the
+    frozen-source contract and additionally requires a hash-listed pre-fit
+    source attestation bound to the V2 canonical source manifest.
+    """
     if str(workflow_name) != _EXPECTED_WORKFLOW:
         raise ValueError("NFL_CI_WORKFLOW_NAME_MISMATCH")
     if str(workflow_conclusion).strip().lower() != "success":
@@ -78,14 +83,20 @@ def verify_nfl_pre_ci_bundle(
 
     root = Path(bundle_dir)
     manifest = _json(root / "nfl_promotion_evidence_manifest.json")
-    if int(manifest.get("schema_version", 0)) != 2:
+    try:
+        evidence_schema = int(manifest.get("schema_version", 0))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("NFL_CI_EVIDENCE_MANIFEST_SCHEMA_INVALID") from exc
+    if evidence_schema not in {2, 3}:
         raise ValueError("NFL_CI_EVIDENCE_MANIFEST_SCHEMA_INVALID")
     if manifest.get("ci_attestation_state") != "PRE_CI_WORKFLOW_CANNOT_SELF_ATTEST":
         raise ValueError("NFL_CI_PRE_ATTESTATION_STATE_INVALID")
     manifest_git_sha = _git_sha(manifest.get("git_sha"), "NFL_CI_EVIDENCE_GIT_SHA_INVALID")
     if manifest_git_sha != head_sha:
         raise ValueError("NFL_CI_HEAD_SHA_MISMATCH")
-    source_manifest_sha = _hash(manifest.get("source_manifest_sha256"), "NFL_CI_SOURCE_MANIFEST_SHA256_INVALID")
+    source_manifest_sha = _hash(
+        manifest.get("source_manifest_sha256"), "NFL_CI_SOURCE_MANIFEST_SHA256_INVALID"
+    )
 
     artifact_rows = manifest.get("artifacts")
     if not isinstance(artifact_rows, list) or not artifact_rows:
@@ -110,6 +121,8 @@ def verify_nfl_pre_ci_bundle(
         "nfl_source_manifest.json",
         "nfl_m2_model.json",
     }
+    if evidence_schema == 3:
+        required.add("nfl_source_freeze_attestation.json")
     if not required.issubset(seen):
         missing = sorted(required - set(seen))[0]
         raise ValueError(f"NFL_CI_REQUIRED_ARTIFACT_MISSING:{missing}")
@@ -123,13 +136,50 @@ def verify_nfl_pre_ci_bundle(
     source_manifest = _json(root / "nfl_source_manifest.json")
     model_artifact = _json(root / "nfl_m2_model.json")
 
+    source_contract_sha: str | None = None
+    if evidence_schema == 3:
+        if manifest.get("source_freeze_attestation_status") != "PASS":
+            raise ValueError("NFL_CI_SOURCE_FREEZE_STATUS_INVALID")
+        source_contract_sha = _hash(
+            manifest.get("source_contract_sha256"),
+            "NFL_CI_SOURCE_CONTRACT_SHA256_INVALID",
+        )
+        if int(source_manifest.get("schema_version", 0)) != 2:
+            raise ValueError("NFL_CI_SOURCE_MANIFEST_FROZEN_SCHEMA_REQUIRED")
+        if _hash(
+            source_manifest.get("source_contract_sha256"),
+            "NFL_CI_SOURCE_MANIFEST_CONTRACT_SHA256_INVALID",
+        ) != source_contract_sha:
+            raise ValueError("NFL_CI_SOURCE_CONTRACT_IDENTITY_MISMATCH")
+        freeze = _json(root / "nfl_source_freeze_attestation.json")
+        if freeze.get("status") != "PASS" or freeze.get("bundle_upgrade_status") != "PASS":
+            raise ValueError("NFL_CI_SOURCE_FREEZE_ATTESTATION_NOT_PASS")
+        if freeze.get("verified_before_model_fit") is not True:
+            raise ValueError("NFL_CI_SOURCE_FREEZE_NOT_VERIFIED_BEFORE_FIT")
+        if freeze.get("phase") != "PRE_MODEL_FIT":
+            raise ValueError("NFL_CI_SOURCE_FREEZE_PHASE_INVALID")
+        if _hash(
+            freeze.get("source_contract_sha256"),
+            "NFL_CI_FREEZE_CONTRACT_SHA256_INVALID",
+        ) != source_contract_sha:
+            raise ValueError("NFL_CI_SOURCE_CONTRACT_IDENTITY_MISMATCH")
+        if _hash(
+            freeze.get("v2_source_manifest_sha256"),
+            "NFL_CI_FREEZE_MANIFEST_SHA256_INVALID",
+        ) != source_manifest_sha:
+            raise ValueError("NFL_CI_SOURCE_FREEZE_MANIFEST_BINDING_MISMATCH")
+
     if _hash(math.get("source_sha256"), "NFL_CI_MATH_SOURCE_SHA256_INVALID") != source_manifest_sha:
         raise ValueError("NFL_CI_SOURCE_IDENTITY_MISMATCH")
     if _hash(history.get("source_sha256"), "NFL_CI_HISTORY_SOURCE_SHA256_INVALID") != source_manifest_sha:
         raise ValueError("NFL_CI_SOURCE_IDENTITY_MISMATCH")
-    if _hash(history.get("source_manifest_sha256"), "NFL_CI_HISTORY_MANIFEST_SHA256_INVALID") != source_manifest_sha:
+    if _hash(
+        history.get("source_manifest_sha256"), "NFL_CI_HISTORY_MANIFEST_SHA256_INVALID"
+    ) != source_manifest_sha:
         raise ValueError("NFL_CI_SOURCE_IDENTITY_MISMATCH")
-    if _hash(source_manifest.get("manifest_sha256"), "NFL_CI_SOURCE_MANIFEST_SELF_SHA_INVALID") != source_manifest_sha:
+    if _hash(
+        source_manifest.get("manifest_sha256"), "NFL_CI_SOURCE_MANIFEST_SELF_SHA_INVALID"
+    ) != source_manifest_sha:
         raise ValueError("NFL_CI_SOURCE_IDENTITY_MISMATCH")
 
     math_code_sha = _git_sha(math.get("code_git_sha"), "NFL_CI_MATH_CODE_SHA_INVALID")
@@ -150,7 +200,10 @@ def verify_nfl_pre_ci_bundle(
         expected_code_git_sha=head_sha,
         expected_source_manifest_sha256=source_manifest_sha,
     )
-    if model.model_id != PRODUCTION_NFL_M2_MODEL_ID or model.feature_contract != NFL_M2_FEATURE_CONTRACT:
+    if (
+        model.model_id != PRODUCTION_NFL_M2_MODEL_ID
+        or model.feature_contract != NFL_M2_FEATURE_CONTRACT
+    ):
         raise ValueError("NFL_CI_MODEL_ARTIFACT_IDENTITY_MISMATCH")
 
     return {
@@ -160,6 +213,9 @@ def verify_nfl_pre_ci_bundle(
         "workflow_run_id": run_id,
         "git_sha": head_sha,
         "source_manifest_sha256": source_manifest_sha,
+        "source_contract_sha256": source_contract_sha,
+        "source_freeze_attested": evidence_schema == 3,
+        "evidence_manifest_schema_version": evidence_schema,
         "model_id": PRODUCTION_NFL_M2_MODEL_ID,
         "feature_contract": NFL_M2_FEATURE_CONTRACT,
         "model_artifact_sha256": seen["nfl_m2_model.json"],
