@@ -36,7 +36,17 @@ class ProspectiveOwnershipTests(unittest.TestCase):
         self.assertEqual(gates["freeze_basis"], "PRE_2026_PROSPECTIVE_COLLECTION_POLICY; NOT DERIVED_FROM_2026_RESULTS")
 
     def test_precommit_does_not_fabricate_truth_gate_floor_provenance(self):
-        self.assertEqual(FLOORS["truth_gate"]["edge_floors"], {})
+        floor_policy = FLOORS["truth_gate"]["floor_policy"]
+        self.assertEqual(floor_policy["status"], "FROZEN_BEFORE_JUDGED_STREAM")
+        self.assertEqual(
+            floor_policy["derivation"],
+            "PREREGISTERED_GOVERNANCE_MINIMUM_NOT_DERIVED_FROM_LATER_JUDGED_STREAM",
+        )
+        self.assertFalse(floor_policy["future_stream_may_lower_floor"])
+        nfl_floors = FLOORS["truth_gate"]["edge_floors"]["NFL"]
+        self.assertEqual(nfl_floors["moneyline"], 0.03)
+        self.assertEqual(nfl_floors["spread"], 0.03)
+        self.assertEqual(nfl_floors["game_total"], 0.03)
         relationship = GOV["nfl_game_market_precommitted_thresholds"]["truth_gate_floor_relationship"]
         self.assertIn("do not fabricate", relationship)
         self.assertIn("provenance-verified frozen edge floor", relationship)
