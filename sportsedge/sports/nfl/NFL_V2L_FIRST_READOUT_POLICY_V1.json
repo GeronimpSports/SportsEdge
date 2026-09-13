@@ -23,8 +23,9 @@
     "predictive": {
       "primary_metric": "JOINT_SCORE_RMSE",
       "comparison": "STRICTLY_LOWER_THAN_M1_CALIBRATED_MARKET_V1",
-      "minimum_fold_win_rate": 0.6666666666666666,
-      "minimum_fold_wins": 4,
+      "untouched_fold_definition": "2020_SEASON_ONLY",
+      "minimum_fold_win_rate": 1.0,
+      "minimum_fold_wins": 1,
       "ties_are_wins": false
     }
   },
@@ -55,5 +56,5 @@
     "excluded_seasons_cannot_change_result": true,
     "result_freeze": "FIRST_SPENT_ATTEMPT_RESULT_IS_IMMEDIATELY_IMMUTABLE_PASS_OR_FAIL"
   },
-  "notes": "This policy is frozen before the first V2L untouched readout. It operationalizes the V2K preregistration evidence boundary without granting Model_P, promotion, staking, or OFFICIAL authority."
+  "notes": "This policy is frozen before the first V2L untouched readout. Because only 2020 is admitted as untouched evidence, the predictive gate is necessarily 1-of-1 on the 2020 season fold; the inherited V2K 4-of-6 rule is not used for this clean-holdout decision. This operationalizes the V2K preregistration evidence boundary without granting Model_P, promotion, staking, or OFFICIAL authority."
 }
