@@ -11,6 +11,7 @@ on:
       - 'tests/test_props_stage3_6_one_sweep.py'
       - 'tests/test_props_stage6_validation_contract.py'
       - 'tests/test_props_validation_provenance_stage6.py'
+      - 'tests/test_props_validation_authority_contract.py'
       - '.github/workflows/props-stage3-7-research.yml'
   workflow_dispatch:
 permissions:
@@ -37,9 +38,11 @@ jobs:
           tests/test_props_stage3_6_one_sweep.py
           tests/test_props_stage6_validation_contract.py
           tests/test_props_validation_provenance_stage6.py
+          tests/test_props_validation_authority_contract.py
       - name: Run Stage 3-7 research contracts
         run: >-
           python -m pytest -q
           tests/test_props_stage3_6_one_sweep.py
           tests/test_props_stage6_validation_contract.py
           tests/test_props_validation_provenance_stage6.py
+          tests/test_props_validation_authority_contract.py
