@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping
 
+from .candidate_families import IMPLEMENTED_FAMILIES
+
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 REQUIRED_SPEC_FIELDS = (
     "formula",
@@ -32,6 +34,8 @@ def _sha(value: object) -> bool:
 
 def _candidate_blockers(candidate: Mapping[str, Any], family: str) -> list[str]:
     blockers: list[str] = []
+    if family not in IMPLEMENTED_FAMILIES:
+        blockers.append("EXECUTABLE_FAMILY_IMPLEMENTATION_MISSING")
     if candidate.get("family") != family:
         blockers.append("FAMILY_IDENTITY_MISMATCH")
     if candidate.get("status") != "PREREGISTERED_UNEVALUATED":
