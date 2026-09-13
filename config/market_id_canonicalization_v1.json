@@ -9,9 +9,14 @@
   },
   "rules": {
     "evidence_rows_must_store_canonical_id": true,
+    "evidence_identity_is_sport_scoped": true,
     "aliases_may_resolve_input_only": true,
     "aliases_do_not_inherit_certification": true,
     "unknown_market_ids_fail_closed": true
+  },
+  "evidence_identity": {
+    "format": "sport:canonical_market_id",
+    "aliases_permitted_in_persisted_identity": false
   },
   "sports": {
     "mlb": {
