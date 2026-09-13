@@ -3,10 +3,13 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from sportsedge.edge_floors import load_edge_floor_config, require_frozen_devig_policy, require_production_edge_floor
 from sportsedge.football_prop_surface import FootballPropSurfaceError, require_executable_prop_surface
+from sportsedge.market_ids import canonical_market_id
 
 ROOT = Path(__file__).resolve().parents[1]
 SURFACE = ROOT / "config/football_prop_engine_surface.json"
+FLOORS = ROOT / "config/truth_gate_floors.json"
 NFL_CERTIFIED_SHA = "3efa5cc92b5ed1bf53a99cbe0d6e7792d01791a77c8f684874d66213b73d9570"
 CFB_CERTIFIED_SHA = "923cfd1be42d31a87d9f31ddffce406d44bfc1bb003d1c625f5a4258f7773f23"
 
@@ -41,6 +44,32 @@ class FootballPropRuntimeTruthTests(unittest.TestCase):
         self.assertTrue(governance["one_sided_offer_ev_allowed_with_model_p"])
         self.assertTrue(governance["paired_price_required_for_devig"])
         self.assertNotIn("requires_paired_price_for_market_economics", governance)
+
+    def test_schema_v3_floor_consumers_work_without_granting_prop_authority(self):
+        config = load_edge_floor_config(str(FLOORS))
+        require_frozen_devig_policy(config=config)
+        floor = require_production_edge_floor(
+            sport="nfl", market="passing_yards", path=str(FLOORS)
+        )
+        self.assertEqual(floor.schema_version, 3)
+        self.assertEqual(floor.sport, "nfl")
+        self.assertEqual(str(floor.value_probability_points), "0.05")
+        self.assertEqual(floor.provenance_status, "PREREGISTERED_PRECOLLECTION")
+        self.assertEqual(floor.evidence_sha256, "")
+
+    def test_mlb_market_id_collisions_resolve_to_one_canonical_id(self):
+        pairs = {
+            ("strikeouts_batter", "strikeouts_hitter"): "hitter_strikeouts",
+            ("pitcher_strikeouts", "strikeouts_pitcher"): "pitcher_strikeouts",
+            ("rbis", "rbi"): "hitter_rbi",
+            ("batters_faced", "pitcher_batters_faced"): "pitcher_batters_faced",
+        }
+        for aliases, canonical in pairs.items():
+            with self.subTest(canonical=canonical):
+                self.assertEqual(
+                    {canonical_market_id("mlb", alias) for alias in aliases},
+                    {canonical},
+                )
 
     def test_executable_frozen_registry_requires_real_sha(self):
         payload = json.loads(SURFACE.read_text(encoding="utf-8"))
