@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "sport": "nfl",
+  "contract": "NFL_PROMOTION_SOURCE_FREEZE_V1",
+  "frozen_from_evidence": {
+    "sportsedge_code_git_sha": "b117c568008a9a592ed9d4135aa1c33f11a10288",
+    "source_manifest_sha256": "b7ff10325b69dd140e8c9d40971475595871e43f8d5a3c2ed2d9ffa8774c0723"
+  },
+  "sources": {
+    "schedule": {
+      "uri": "https://raw.githubusercontent.com/nflverse/nfldata/33488cbcb33839efeb3776bf81673787d18a2bcf/data/games.csv",
+      "expected_sha256": "45a0a605c4d6a94d241dfc0e4f8d69175001b52ec87d9e4c7ea72902810e9181",
+      "upstream_identity": {
+        "type": "git_commit_blob",
+        "repository": "nflverse/nfldata",
+        "commit_sha": "33488cbcb33839efeb3776bf81673787d18a2bcf",
+        "path": "data/games.csv",
+        "git_blob_sha1": "54342c359b42573277a67dcda801519edcb0b1e8"
+      }
+    },
+    "stadiums": {
+      "uri": "https://raw.githubusercontent.com/greerreNFL/Stadiums/efa9543af50b01424754219fa0e4f3c7044ff198/data/team_stadiums.csv",
+      "expected_sha256": "933eea58fdf6e02b38492f1176a8d463266dc92f1f6b3dcd70f1f4427da9bc96",
+      "upstream_identity": {
+        "type": "git_commit_path",
+        "repository": "greerreNFL/Stadiums",
+        "commit_sha": "efa9543af50b01424754219fa0e4f3c7044ff198",
+        "path": "data/team_stadiums.csv"
+      }
+    },
+    "starter_overrides": {
+      "uri": "repo://config/nfl_historical_starter_overrides.json",
+      "expected_sha256": "99f19d2a82baf66275b3332bbd76d918bb92e4fb4b25b34caf276b1b8887d43d",
+      "upstream_identity": {
+        "type": "sportsedge_repo_file",
+        "path": "config/nfl_historical_starter_overrides.json"
+      }
+    }
+  },
+  "seasonal_sources": {
+    "pbp": {
+      "seasons": [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
+      "uri_template": "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{season}.csv.gz",
+      "upstream_identity": {
+        "type": "github_release_asset",
+        "repository": "nflverse/nflverse-data",
+        "release_tag": "pbp",
+        "asset_template": "play_by_play_{season}.csv.gz",
+        "provider_release_immutable": false
+      },
+      "expected_sha256_by_season": {
+        "2016": "dc1703d9aae3ec697ac2787617f82b6f074d0c151e1a54f8217f570a63dcb5ed",
+        "2017": "74032964ca6bdfc5bbe186253231a533d2d82aa531fac02b9382da01b3a8b34e",
+        "2018": "d37899610b397b96a90da6902827de5b46c5457b93e0e16d5f95a8eb524e4a7d",
+        "2019": "b764668137052be23745953cbc33fa17e537a70c81e9b73785a19a15e7288216",
+        "2020": "bc954b5780e325df4faa255fac092585c981a4de5d2f553a8a4e0a3c8b3a3cf2",
+        "2021": "e8743a568f99667a8bdcd29ba12224ee1782ad2b7916bee78ee335c099383739",
+        "2022": "0c69a71eb39498956c7b1d5c1ca52ce7fe679934a95d1af249facb5ea9829ea4",
+        "2023": "21786b560025513151658558aedeae613466c570c5e8dea0fdc3117452a43b8b",
+        "2024": "b828b83171239380628c1979f8256a431ded5165aeffc47c53c5b521412973ec",
+        "2025": "2117880e8e92ac056b17e87e4adf43fcb94f4d635894694081c7b0e8d8e32362"
+      }
+    },
+    "participation": {
+      "seasons": [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
+      "uri_template": "https://github.com/nflverse/nflverse-data/releases/download/pbp_participation/pbp_participation_{season}.csv",
+      "upstream_identity": {
+        "type": "github_release_asset",
+        "repository": "nflverse/nflverse-data",
+        "release_tag": "pbp_participation",
+        "asset_template": "pbp_participation_{season}.csv",
+        "provider_release_immutable": false
+      },
+      "expected_sha256_by_season": {
+        "2016": "6f95c668d3c0371120394c98816b8915690c3cd5a01e608b70c8b2b093c269a4",
+        "2017": "32730ecc1f548afece42924221582fb6d7ca83f9a17805e5e9e3f609de0f8f9e",
+        "2018": "5de82003c79a5f405431ded763dc531bbdfb3d7da352f1f8f809d4f57d2caece",
+        "2019": "73101ad4a18e05dafd871219cbe27edf7df9de71e912c5f997a93de82fb7db5e",
+        "2020": "4f517a3cbc4af8d41e0a0ce4905bf33aa99c03029e1f59b0d16d8adb5e756e8f",
+        "2021": "024c8a2cda59747a20e43da6bfedbc8059bc8270b779dc1d520845186249f6cf",
+        "2022": "2c66b9e24ec25803a2238984b3c386070bb42ce1b24155d857387b59a7d6cda8",
+        "2023": "0ea06cf6419fcc5feecd65b1b18317befc05b538f85bfdda13a03c17665a05fc",
+        "2024": "68303811d17629f5711e22e5efe72e485847b1943605224e1ed3f5a113541e7a",
+        "2025": "ed40b35d560e298888b4ced85dd080ba1453db4dfe9ed56f46ebe1d10499622c"
+      }
+    },
+    "depth": {
+      "seasons": [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
+      "uri_template": "https://github.com/nflverse/nflverse-data/releases/download/depth_charts/depth_charts_{season}.csv",
+      "upstream_identity": {
+        "type": "github_release_asset",
+        "repository": "nflverse/nflverse-data",
+        "release_tag": "depth_charts",
+        "asset_template": "depth_charts_{season}.csv",
+        "provider_release_immutable": false
+      },
+      "expected_sha256_by_season": {
+        "2016": "3d1e7f6c3640f5dd0b2cc600d21310f9be794052cf5bdeca7e4043baaab5f78f",
+        "2017": "df6a1604bbf34a9a15938da3e74ea66583a11991e3942379f88466db4f311437",
+        "2018": "537cb22ace3cbc57c08cde0686c973aef481199abaa81e0e4222e35477cf78b1",
+        "2019": "80d8fd34a7499c6e5b41e66f277bb2b05968bb3dfaa9a44e04d48de84ba16de1",
+        "2020": "5270a8c083aacf5593f11ebd00d166bbcb0397d4a2855d895c3d9afcb508706e",
+        "2021": "06ce74c95ed4684c408bd17d6b85ea532934f7020225971d0b95bc0d24397036",
+        "2022": "88d91dd8582e67d83bd9ff6ee37be30ea1e75b315fdde733ec70d09c1dc9da4d",
+        "2023": "805fe907aead57497650ac2731b4453c5424d9aeace193e95dd91a73943bc866",
+        "2024": "d99a333815720137577278384f0c7df1d3021e1917de909db236ad70bb51e5d2",
+        "2025": "9197e7d0279e0bd91487d725975e7c4ba39dfed5db2c150444c7db38f0be7514"
+      }
+    }
+  }
+}
