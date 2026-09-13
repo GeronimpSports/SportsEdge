@@ -1,0 +1,76 @@
+name: nfl-v2k-source-contract
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'sportsedge/sports/nfl/NFL_V2K_FEATURE_POLICY_V1.json'
+      - 'sportsedge/sports/nfl/v2k_source_acquisition_contract.py'
+      - 'sportsedge/sports/nfl/v2k_raw_drive_builder.py'
+      - 'scripts/acquire_nfl_v2k_source_assets.py'
+      - 'tests/test_nfl_v2k_feature_policy.py'
+      - 'tests/test_nfl_v2k_source_acquisition_contract.py'
+      - 'tests/test_nfl_v2k_source_acquisition_script.py'
+      - 'tests/test_nfl_v2k_raw_drive_builder.py'
+      - '.github/workflows/nfl-v2k-source-contract.yml'
+      - '.github/workflows/nfl-v2k-source-acquisition.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'sportsedge/sports/nfl/NFL_V2K_FEATURE_POLICY_V1.json'
+      - 'sportsedge/sports/nfl/v2k_source_acquisition_contract.py'
+      - 'sportsedge/sports/nfl/v2k_raw_drive_builder.py'
+      - 'scripts/acquire_nfl_v2k_source_assets.py'
+      - 'tests/test_nfl_v2k_feature_policy.py'
+      - 'tests/test_nfl_v2k_source_acquisition_contract.py'
+      - 'tests/test_nfl_v2k_source_acquisition_script.py'
+      - 'tests/test_nfl_v2k_raw_drive_builder.py'
+      - '.github/workflows/nfl-v2k-source-contract.yml'
+      - '.github/workflows/nfl-v2k-source-acquisition.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version-file: '.python-version'
+      - name: Compile V2K source boundary
+        run: >-
+          python -m py_compile
+          sportsedge/sports/nfl/v2k_source_acquisition_contract.py
+          sportsedge/sports/nfl/v2k_raw_drive_builder.py
+          scripts/acquire_nfl_v2k_source_assets.py
+          tests/test_nfl_v2k_feature_policy.py
+          tests/test_nfl_v2k_source_acquisition_contract.py
+          tests/test_nfl_v2k_source_acquisition_script.py
+          tests/test_nfl_v2k_raw_drive_builder.py
+      - name: Run V2K source, feature, and normalization contracts
+        run: >-
+          python -m unittest
+          tests.test_nfl_v2k_feature_policy
+          tests.test_nfl_v2k_source_acquisition_contract
+          tests.test_nfl_v2k_source_acquisition_script
+          tests.test_nfl_v2k_raw_drive_builder -v
+      - name: Prove source workflow cannot spend a V2K readout
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/workflows/nfl-v2k-source-acquisition.yml').read_text()
+          forbidden=(
+              'v2k_evaluator.py',
+              'v2k_drive_simulator.py',
+              'football-nfl-promotion-evidence',
+              'run_nfl_auto.py',
+              'run_it_nfl',
+          )
+          for token in forbidden:
+              assert token not in text, token
+          assert 'workflow_dispatch' in text
+          assert 'schedule:' not in text
+          PY
