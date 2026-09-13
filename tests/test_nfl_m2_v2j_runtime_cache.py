@@ -8,7 +8,10 @@ from sportsedge.sports.nfl.m2_v2j_candidate import (
     _feature_vector as feature_vector_reference,
     fit_nfl_m2_v2j_candidate,
 )
-from sportsedge.sports.nfl.m2_v2j_runtime_cache import market_readout_exact_cached
+from sportsedge.sports.nfl.m2_v2j_runtime_cache import (
+    _repeat_convolution_ladder_exact,
+    market_readout_exact_cached,
+)
 from sportsedge.sports.nfl.m2_v2j_validation import _market_readout
 from sportsedge.sports.nfl.m2_v2i_candidate import (
     _offense_drive_probabilities as offense_drive_reference,
@@ -120,6 +123,16 @@ class NFLV2JRuntimeCacheTests(unittest.TestCase):
             with self.subTest(spread=row["spread_line"], total=row["total_line"]):
                 self.assertEqual(market_readout_exact_cached(self.model, row), _market_readout(self.model, row))
 
+    def test_convolution_ladder_matches_frozen_restarts_exactly_for_every_count(self):
+        base = {0: 0.61, 3: 0.14, 6: 0.05, 7: 0.18, 8: 0.02}
+        counts = (0, 1, 2, 5, 9, 12)
+        ladder = _repeat_convolution_ladder_exact(base, counts)
+        self.assertEqual(tuple(ladder), counts)
+        for count in counts:
+            with self.subTest(count=count):
+                self.assertEqual(ladder[count], repeat_reference(base, count))
+                self.assertEqual(list(ladder[count].items()), list(repeat_reference(base, count).items()))
+
     def test_cached_readout_reduces_repeat_convolution_calls_without_changing_output(self):
         row = prediction_row(-3.0, 45.0)
         with patch(
@@ -134,6 +147,7 @@ class NFLV2JRuntimeCacheTests(unittest.TestCase):
             actual = market_readout_exact_cached(self.model, row)
         self.assertEqual(actual, expected)
         self.assertLess(cached_calls.call_count, reference_calls.call_count)
+        self.assertEqual(cached_calls.call_count, 0)
 
     def test_conditioning_invariants_are_computed_once_per_direction(self):
         row = prediction_row(-3.0, 45.0)
