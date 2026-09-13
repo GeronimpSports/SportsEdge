@@ -1,0 +1,35 @@
+{
+  "schema": "SPORTSEDGE_NFL_V2K_EVAL_POLICY_V1",
+  "candidate": "NFL_V2K_FOOTBALL_NATIVE_DRIVE_V1",
+  "status": "FROZEN_BEFORE_FIRST_READOUT",
+  "temporal_split": "SEASON_FORWARD_ONLY",
+  "random_split_allowed": false,
+  "test_seasons": [2020, 2021, 2022, 2023, 2024, 2025],
+  "minimum_calibration_n": 500,
+  "calibration": {
+    "slope_min": 0.90,
+    "slope_max": 1.10,
+    "intercept_abs_max": 0.03,
+    "ece_max": 0.05
+  },
+  "signed_key_margin": {
+    "keys": [-7, -3, 3, 7],
+    "max_abs_error_each": 0.005
+  },
+  "predictive": {
+    "must_report_score_rmse": true,
+    "must_report_margin_rmse": true,
+    "must_report_total_rmse": true,
+    "must_report_brier": true,
+    "must_report_log_loss": true,
+    "must_report_fold_stability": true,
+    "pass_requires_frozen_benchmark_rule": true
+  },
+  "joint_distribution_required": true,
+  "markets_if_model_valid": ["moneyline", "spread", "game_total", "home_team_total", "away_team_total"],
+  "retain_integer_push_mass": true,
+  "no_post_readout_retuning": true,
+  "model_p_authority": false,
+  "promotion_authority": false,
+  "official_authority": false
+}
