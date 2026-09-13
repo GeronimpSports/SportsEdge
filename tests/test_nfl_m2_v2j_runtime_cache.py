@@ -8,6 +8,10 @@ from sportsedge.sports.nfl.m2_v2j_candidate import (
     _feature_vector as feature_vector_reference,
     fit_nfl_m2_v2j_candidate,
 )
+from sportsedge.sports.nfl.m2_v2j_ordered_parallel import (
+    NFLV2JOrderedParallelError,
+    ordered_parallel_market_readouts_exact_cached,
+)
 from sportsedge.sports.nfl.m2_v2j_runtime_cache import (
     _repeat_convolution_ladder_exact,
     market_readout_exact_cached,
@@ -164,11 +168,36 @@ class NFLV2JRuntimeCacheTests(unittest.TestCase):
         self.assertEqual(drive_calls.call_count, 2)
         self.assertGreater(len(self.model.shared_environment), 1)
 
+    def test_ordered_parallel_readouts_are_bit_exact_and_preserve_input_order(self):
+        rows = [
+            prediction_row(-2.5, 44.5),
+            prediction_row(-3.0, 45.0),
+            prediction_row(None, 41.5),
+            prediction_row(7.0, None),
+        ]
+        expected = tuple(market_readout_exact_cached(self.model, row) for row in rows)
+        actual = ordered_parallel_market_readouts_exact_cached(self.model, rows, max_workers=2)
+        self.assertEqual(actual, expected)
+        self.assertEqual(
+            tuple((row["spread_line"], row["total_line"]) for row in rows),
+            tuple((result["spread_line"], result["total_line"]) for result in actual),
+        )
+
+    def test_ordered_parallel_path_fails_closed_on_invalid_worker_count_and_bad_row(self):
+        with self.assertRaisesRegex(NFLV2JOrderedParallelError, "NFL_V2J_PARALLEL_WORKER_COUNT_INVALID"):
+            ordered_parallel_market_readouts_exact_cached(self.model, [prediction_row()], max_workers=0)
+        bad = prediction_row()
+        bad["home_team"] = ""
+        with self.assertRaises(ValueError):
+            ordered_parallel_market_readouts_exact_cached(self.model, [prediction_row(), bad], max_workers=2)
+
     def test_contingency_is_not_wired_into_frozen_first_readout_workflow(self):
         workflow = (ROOT / ".github/workflows/nfl-v2j-first-readout.yml").read_text(encoding="utf-8")
         script = (ROOT / "scripts/run_nfl_v2j_first_readout.py").read_text(encoding="utf-8")
         self.assertNotIn("m2_v2j_runtime_cache", workflow)
         self.assertNotIn("m2_v2j_runtime_cache", script)
+        self.assertNotIn("m2_v2j_ordered_parallel", workflow)
+        self.assertNotIn("m2_v2j_ordered_parallel", script)
 
 
 if __name__ == "__main__":
