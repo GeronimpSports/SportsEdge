@@ -13,8 +13,10 @@ FIT_SCHEMA="SPORTSEDGE_NFL_V2K_PIT_FIT_V1"
 @dataclass(frozen=True)
 class DriveRow:
     game_id: str
+    drive_id: str
     kickoff_utc: str
     offense: str
+    defense: str
     start_yard: float
     outcome: str
 
@@ -30,10 +32,14 @@ def _prob_map(counts: Mapping[str,int], n: int, fallback: Mapping[str,float] | N
     return {k:int(counts[k])/n for k in counts}
 
 def fit_pit(rows: Iterable[DriveRow], *, prediction_cutoff_utc: str, source_manifest_sha256: str, feature_policy_sha256: str, code_sha: str) -> dict:
-    cutoff=_dt(prediction_cutoff_utc); accepted=[]; taxonomy={x.value for x in DriveOutcome}
+    cutoff=_dt(prediction_cutoff_utc); accepted=[]; taxonomy={x.value for x in DriveOutcome}; seen_drives=set()
     for r in rows:
         if _dt(r.kickoff_utc)>=cutoff: raise ValueError("PIT violation: training row at/after prediction cutoff")
-        if not r.game_id or not r.offense: raise ValueError("game/offense identity required")
+        if not r.game_id or not r.drive_id or not r.offense or not r.defense: raise ValueError("game/drive/offense/defense identity required")
+        if r.offense==r.defense: raise ValueError("offense and defense must differ")
+        identity=(r.game_id,r.drive_id)
+        if identity in seen_drives: raise ValueError("duplicate drive identity")
+        seen_drives.add(identity)
         if r.outcome not in taxonomy: raise ValueError("unknown drive outcome")
         if not 1.0<=float(r.start_yard)<=99.0: raise ValueError("invalid starting field position")
         accepted.append(r)
@@ -57,7 +63,7 @@ def fit_pit(rows: Iterable[DriveRow], *, prediction_cutoff_utc: str, source_mani
         p=(scoring+0.5)/(total+1.0); logits.append(math.log(p/(1.0-p)))
     mean_logit=sum(logits)/len(logits); shared_sd=(sum((x-mean_logit)**2 for x in logits)/max(1,len(logits)-1))**0.5
     by_bin={b:_prob_map(bin_counts[b],bin_n[b],global_probs) for b in START_BINS}
-    fit={"schema":FIT_SCHEMA,"prediction_cutoff_utc":cutoff.isoformat(),"source_manifest_sha256":source_manifest_sha256,"feature_policy_sha256":feature_policy_sha256,"code_sha":code_sha,"training_rows":n,"training_team_games":len(possessions),"training_games":len(game_scoring),"params":{"drives_mean":mean_drives,"drives_sd":var_drives**0.5,"start_yard_mean":mean_start,"start_yard_sd":var_start**0.5,"shared_efficiency_sd":shared_sd,"outcome_probs":global_probs,"outcome_probs_by_start_bin":by_bin},"model_p_authority":False,"promotion_authority":False,"official_authority":False}
+    fit={"schema":FIT_SCHEMA,"prediction_cutoff_utc":cutoff.isoformat(),"source_manifest_sha256":source_manifest_sha256,"feature_policy_sha256":feature_policy_sha256,"code_sha":code_sha,"training_rows":n,"training_unique_drives":len(seen_drives),"training_team_games":len(possessions),"training_games":len(game_scoring),"params":{"drives_mean":mean_drives,"drives_sd":var_drives**0.5,"start_yard_mean":mean_start,"start_yard_sd":var_start**0.5,"shared_efficiency_sd":shared_sd,"outcome_probs":global_probs,"outcome_probs_by_start_bin":by_bin},"model_p_authority":False,"promotion_authority":False,"official_authority":False}
     canonical=json.dumps(fit,sort_keys=True,separators=(",",":")).encode(); fit["fit_sha256"]=hashlib.sha256(canonical).hexdigest(); return fit
 
 def params_from_fit(fit: Mapping, *, expected_source_manifest_sha256: str, expected_feature_policy_sha256: str, expected_code_sha: str) -> V2KParams:
