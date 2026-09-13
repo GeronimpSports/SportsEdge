@@ -1,0 +1,8 @@
+CLOSING_LINE_ARCHIVE_V2 supersedes V1 for new capture.
+Provider commence_time is only a scheduling hint.
+close owns scheduled lead 2-20 minutes.
+t0_candidate owns scheduled lead -30 to less than 2 minutes, including scheduled T-0.
+Every price row remains NOT_EVIDENCE and UNADJUDICATED until a separate append-only actual-start attestation exists.
+MLB actual-start attestations use the first play timestamp from the official MLB StatsAPI feed and exact source SHA-256.
+Neither price rows nor start attestations create Model_P, eligibility, Truth Gate PASS, edge floors, staking, promotion, or OFFICIAL authority.
+Historical V1 rows are never rewritten.
