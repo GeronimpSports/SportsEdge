@@ -16,6 +16,23 @@
     "additional_markets_start_utc": "2023-05-03T05:30:00Z",
     "paid_plan_required": true
   },
+  "public_architecture_reference": {
+    "repository_url": "https://github.com/hitechlan1001/OddsAPI-Historical-Data-Fetcher",
+    "commit_sha": "0b5794089e22d5800ca5143a35d437236ae1a83c",
+    "adopted_scope": [
+      "historical event discovery before odds retrieval",
+      "requesting h2h/spreads/totals from The Odds API historical endpoint",
+      "season-bounded resumable acquisition concept"
+    ],
+    "not_adopted": [
+      "consensus aggregation",
+      "fitted artifacts",
+      "thresholds",
+      "validation claims",
+      "provider data as model features"
+    ],
+    "dependency_mode": "REIMPLEMENTED_NOT_LIVE_DEPENDENCY"
+  },
   "admitted_sports": ["NFL", "CFB", "MLB"],
   "admitted_market_families": ["moneyline", "spread", "game_total"],
   "required_snapshot_fields": [
