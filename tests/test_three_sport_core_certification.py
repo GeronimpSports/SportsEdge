@@ -69,6 +69,19 @@ class ThreeSportCoreCertificationTests(unittest.TestCase):
             self.assertEqual(cfb["latest_forward_pit_status_source"], "capture/classification.json")
             self.assertEqual(cfb["status"], "BLOCKED_HISTORICAL_PIT_TRAINING_BUNDLE_MISSING")
 
+    def test_nfl_v2h_failed_readout_is_frozen_non_authoritative(self):
+        row = json.loads(Path("sportsedge/sports/nfl/NFL_V2H_FIRST_READOUT_RESULT_2026-09-12.json").read_text())
+        self.assertEqual(row["readout_status"], "REJECTED_FROZEN_ATTEMPT")
+        self.assertFalse(row["frozen_readout"]["spread"]["historical_predictive_pass"])
+        self.assertFalse(row["frozen_readout"]["total"]["historical_predictive_pass"])
+        self.assertFalse(row["frozen_readout"]["emergent_key_fit"]["pass"])
+        governance = row["governance"]
+        self.assertTrue(governance["preregistration_locked"])
+        self.assertFalse(governance["post_readout_retuning_allowed"])
+        self.assertFalse(governance["may_reuse_same_readout_as_untouched_for_revised_candidate"])
+        for key in ("model_p_authority", "promotion_authority", "promotion_eligible", "eligibility_changed", "edge_floor_changed", "official_status_granted"):
+            self.assertFalse(governance[key], key)
+
 
 if __name__ == "__main__":
     unittest.main()
