@@ -1,8 +1,9 @@
 """Hash-bound Stage 6 validation provenance for research prop engines.
 
 This module wraps the existing metric gate with evidence identity. It does not
-create Model_P or production authority. Predictions, PIT records, and realized
-outcomes remain separate inputs until this layer binds them deterministically.
+create Model_P or production authority. Predictions, PIT records, training-fold
+membership, and realized outcomes remain separate inputs until this layer binds
+them deterministically.
 """
 from __future__ import annotations
 
@@ -71,6 +72,20 @@ def _finite_float(value:object,name:str)->float:
     return out
 
 
+def _training_population(rows:object,fold_id:str)->tuple[list[str],str]:
+    if not isinstance(rows,Sequence) or isinstance(rows,(str,bytes,bytearray)):
+        raise ValueError(f"BOUND_VALIDATION_TRAINING_POPULATION_INVALID:{fold_id}")
+    resolved=[]
+    seen=set()
+    for value in rows:
+        event_id=_identity(value,"training_event_id")
+        if event_id in seen:raise ValueError(f"BOUND_VALIDATION_TRAINING_EVENT_DUPLICATE:{fold_id}:{event_id}")
+        seen.add(event_id);resolved.append(event_id)
+    if not resolved:raise ValueError(f"BOUND_VALIDATION_TRAINING_POPULATION_EMPTY:{fold_id}")
+    ordered=sorted(resolved)
+    return ordered,_canonical_sha256({"schema":"PROP_FOLD_TRAINING_EVENTS_V1","fold_id":fold_id,"event_ids":ordered})
+
+
 def validation_attestation_sha256(attestation:Mapping[str,Any])->str:
     payload=dict(attestation)
     payload.pop("artifact_sha256",None)
@@ -85,8 +100,7 @@ def verify_validation_attestation(attestation:Mapping[str,Any])->dict[str,Any]:
     expected=_hex(payload.get("artifact_sha256"),64,"artifact_sha256")
     actual=validation_attestation_sha256(payload)
     if actual!=expected:raise ValueError("VALIDATION_ATTESTATION_HASH_MISMATCH")
-    if not isinstance(payload.get("passed"),bool):
-        raise ValueError("VALIDATION_ATTESTATION_PASS_FLAG_INVALID")
+    if not isinstance(payload.get("passed"),bool):raise ValueError("VALIDATION_ATTESTATION_PASS_FLAG_INVALID")
     if payload.get("status") != ("PASS" if payload["passed"] else "FAIL"):
         raise ValueError("VALIDATION_ATTESTATION_STATUS_CONTRADICTION")
     return payload
@@ -97,6 +111,7 @@ def build_bound_validation_attestation(
     outcomes:Sequence[Mapping[str,Any]],
     *,
     pit_records:Mapping[str,Mapping[str,Any]],
+    fold_training_event_ids:Mapping[str,Sequence[str]],
     sport:str,
     model_id:str,
     model_version:str,
@@ -108,21 +123,16 @@ def build_bound_validation_attestation(
     slope_max:float=1.10,
     intercept_abs_max:float=.03,
 )->dict[str,Any]:
-    """Bind chronological prediction evidence to PIT, folds, model identity, and outcomes.
-
-    `predictions` are immutable pre-event records. `outcomes` are supplied
-    separately so realized results cannot mutate the prediction record. Each PIT
-    record is revalidated by Stage 5 and its canonical hash must match the
-    prediction's declared PIT binding.
-    """
+    """Bind prediction evidence to PIT, model identity, fold membership, and outcomes."""
     resolved_sport=_identity(sport,"sport").upper()
     if resolved_sport not in {"NFL","CFB","MLB"}:raise ValueError("BOUND_VALIDATION_SPORT_UNSUPPORTED")
     resolved_model_id=_identity(model_id,"model_id")
     resolved_model_version=_identity(model_version,"model_version")
     resolved_code_sha=_hex(code_git_sha,40,"code_git_sha")
-    xs=list(predictions); ys=list(outcomes)
+    xs=list(predictions);ys=list(outcomes)
     if not xs:raise ValueError("NO_BOUND_VALIDATION_PREDICTIONS")
     if not isinstance(pit_records,Mapping):raise ValueError("BOUND_VALIDATION_PIT_RECORDS_INVALID")
+    if not isinstance(fold_training_event_ids,Mapping):raise ValueError("BOUND_VALIDATION_TRAINING_POPULATIONS_INVALID")
 
     outcome_by_id:dict[str,Mapping[str,Any]]={}
     for raw in ys:
@@ -131,26 +141,24 @@ def build_bound_validation_attestation(
         if prediction_id in outcome_by_id:raise ValueError(f"BOUND_VALIDATION_OUTCOME_DUPLICATE:{prediction_id}")
         outcome_by_id[prediction_id]=raw
 
-    seen_prediction_ids:set[str]=set()
-    seen_units:set[tuple[str,str,str]]=set()
-    seen_fold_order:list[str]=[]
-    closed_folds:set[str]=set()
-    active_fold:str|None=None
-    fold_contracts:dict[str,dict[str,str]]={}
-    metric_rows:list[dict[str,Any]]=[]
-    row_bindings:list[dict[str,Any]]=[]
+    seen_prediction_ids:set[str]=set();seen_units:set[tuple[str,str,str]]=set()
+    seen_fold_order:list[str]=[];closed_folds:set[str]=set();active_fold:str|None=None
+    fold_contracts:dict[str,dict[str,Any]]={};training_cache:dict[str,tuple[list[str],str]]={}
+    metric_rows:list[dict[str,Any]]=[];row_bindings:list[dict[str,Any]]=[]
 
     for raw in xs:
         if not isinstance(raw,Mapping):raise ValueError("BOUND_VALIDATION_PREDICTION_INVALID")
         prediction_id=_identity(raw.get("prediction_id"),"prediction_id")
         if prediction_id in seen_prediction_ids:raise ValueError(f"BOUND_VALIDATION_PREDICTION_DUPLICATE:{prediction_id}")
         seen_prediction_ids.add(prediction_id)
-        event_id=_identity(raw.get("event_id"),"event_id")
-        entity_id=_identity(raw.get("entity_id"),"entity_id")
-        market_id=_identity(raw.get("market_id"),"market_id")
+        event_id=_identity(raw.get("event_id"),"event_id");entity_id=_identity(raw.get("entity_id"),"entity_id");market_id=_identity(raw.get("market_id"),"market_id")
         unit=(event_id,entity_id,market_id)
         if unit in seen_units:raise ValueError(f"BOUND_VALIDATION_UNIT_DUPLICATE:{event_id}:{entity_id}:{market_id}")
         seen_units.add(unit)
+
+        if _identity(raw.get("model_id"),"prediction_model_id")!=resolved_model_id:raise ValueError(f"BOUND_VALIDATION_MODEL_ID_MISMATCH:{prediction_id}")
+        if _identity(raw.get("model_version"),"prediction_model_version")!=resolved_model_version:raise ValueError(f"BOUND_VALIDATION_MODEL_VERSION_MISMATCH:{prediction_id}")
+        if _hex(raw.get("code_git_sha"),40,"prediction_code_git_sha")!=resolved_code_sha:raise ValueError(f"BOUND_VALIDATION_CODE_SHA_MISMATCH:{prediction_id}")
 
         fold_id=_identity(raw.get("fold_id"),"fold_id")
         if active_fold is None:
@@ -159,24 +167,24 @@ def build_bound_validation_attestation(
             closed_folds.add(active_fold)
             if fold_id in closed_folds:raise ValueError(f"BOUND_VALIDATION_FOLD_REENTRY:{fold_id}")
             active_fold=fold_id;seen_fold_order.append(fold_id)
+        if fold_id not in training_cache:
+            if fold_id not in fold_training_event_ids:raise ValueError(f"BOUND_VALIDATION_TRAINING_POPULATION_MISSING:{fold_id}")
+            training_cache[fold_id]=_training_population(fold_training_event_ids[fold_id],fold_id)
+        training_events,training_sha=training_cache[fold_id]
+        if event_id in training_events:raise ValueError(f"BOUND_VALIDATION_TEST_EVENT_IN_TRAINING:{fold_id}:{event_id}")
 
         model_artifact_sha=_hex(raw.get("model_artifact_sha256"),64,"model_artifact_sha256")
         declared_pit_sha=_hex(raw.get("pit_record_sha256"),64,"pit_record_sha256")
-        prediction_asof=_dt(raw.get("prediction_asof_ts"),"prediction_asof_ts")
-        event_start=_dt(raw.get("event_start_ts"),"event_start_ts")
-        train_cutoff=_dt(raw.get("train_cutoff_ts"),"train_cutoff_ts")
-        calibration_cutoff=_dt(raw.get("calibration_fit_cutoff_ts"),"calibration_fit_cutoff_ts")
-        if not calibration_cutoff<=train_cutoff<prediction_asof<event_start:
-            raise ValueError(f"BOUND_VALIDATION_TEMPORAL_LEAKAGE:{prediction_id}")
+        prediction_asof=_dt(raw.get("prediction_asof_ts"),"prediction_asof_ts");event_start=_dt(raw.get("event_start_ts"),"event_start_ts")
+        train_cutoff=_dt(raw.get("train_cutoff_ts"),"train_cutoff_ts");calibration_cutoff=_dt(raw.get("calibration_fit_cutoff_ts"),"calibration_fit_cutoff_ts")
+        if not calibration_cutoff<=train_cutoff<prediction_asof<event_start:raise ValueError(f"BOUND_VALIDATION_TEMPORAL_LEAKAGE:{prediction_id}")
 
         fold_contract={
-            "train_cutoff_ts":str(raw.get("train_cutoff_ts")),
-            "calibration_fit_cutoff_ts":str(raw.get("calibration_fit_cutoff_ts")),
-            "model_artifact_sha256":model_artifact_sha,
+            "train_cutoff_ts":str(raw.get("train_cutoff_ts")),"calibration_fit_cutoff_ts":str(raw.get("calibration_fit_cutoff_ts")),
+            "model_artifact_sha256":model_artifact_sha,"training_event_ids_sha256":training_sha,"training_event_count":len(training_events),
         }
         prior_fold=fold_contracts.get(fold_id)
-        if prior_fold is not None and prior_fold!=fold_contract:
-            raise ValueError(f"BOUND_VALIDATION_FOLD_IDENTITY_DRIFT:{fold_id}")
+        if prior_fold is not None and prior_fold!=fold_contract:raise ValueError(f"BOUND_VALIDATION_FOLD_IDENTITY_DRIFT:{fold_id}")
         fold_contracts.setdefault(fold_id,fold_contract)
 
         pit_raw=pit_records.get(prediction_id)
@@ -191,90 +199,57 @@ def build_bound_validation_attestation(
         if outcome is None:raise ValueError(f"BOUND_VALIDATION_OUTCOME_MISSING:{prediction_id}")
         outcome_observed=_dt(outcome.get("outcome_observed_at_ts"),"outcome_observed_at_ts")
         if outcome_observed<event_start:raise ValueError(f"BOUND_VALIDATION_OUTCOME_OBSERVED_BEFORE_EVENT:{prediction_id}")
-        try:
-            y=float(outcome["outcome"])
-        except (KeyError,TypeError,ValueError) as exc:
-            raise ValueError(f"BOUND_VALIDATION_OUTCOME_BAD:{prediction_id}") from exc
+        try:y=float(outcome["outcome"])
+        except (KeyError,TypeError,ValueError) as exc:raise ValueError(f"BOUND_VALIDATION_OUTCOME_BAD:{prediction_id}") from exc
         if not isfinite(y) or y not in {0.0,1.0}:raise ValueError(f"BOUND_VALIDATION_OUTCOME_BAD:{prediction_id}")
 
         row={"event_start_ts":str(raw.get("event_start_ts")),"model_probability":raw.get("model_probability"),"outcome":y}
-        prediction_has_quantity="quantity_prediction" in raw
-        outcome_has_quantity="quantity_actual" in outcome
+        prediction_has_quantity="quantity_prediction" in raw;outcome_has_quantity="quantity_actual" in outcome
         if prediction_has_quantity!=outcome_has_quantity:raise ValueError(f"BOUND_VALIDATION_QUANTITY_BINDING_INCOMPLETE:{prediction_id}")
         if prediction_has_quantity:
-            row["quantity_prediction"]=raw.get("quantity_prediction")
-            row["quantity_actual"]=outcome.get("quantity_actual")
+            row["quantity_prediction"]=raw.get("quantity_prediction");row["quantity_actual"]=outcome.get("quantity_actual")
         metric_rows.append(row)
         row_binding={
-            "prediction_id":prediction_id,
-            "event_id":event_id,
-            "entity_id":entity_id,
-            "market_id":market_id,
-            "fold_id":fold_id,
-            "prediction_asof_ts":str(raw.get("prediction_asof_ts")),
-            "event_start_ts":str(raw.get("event_start_ts")),
-            "train_cutoff_ts":str(raw.get("train_cutoff_ts")),
-            "calibration_fit_cutoff_ts":str(raw.get("calibration_fit_cutoff_ts")),
-            "pit_record_sha256":declared_pit_sha,
-            "model_artifact_sha256":model_artifact_sha,
-            "model_probability":raw.get("model_probability"),
-            "outcome":y,
-            "outcome_observed_at_ts":str(outcome.get("outcome_observed_at_ts")),
+            "prediction_id":prediction_id,"event_id":event_id,"entity_id":entity_id,"market_id":market_id,"fold_id":fold_id,
+            "model_id":resolved_model_id,"model_version":resolved_model_version,"code_git_sha":resolved_code_sha,
+            "prediction_asof_ts":str(raw.get("prediction_asof_ts")),"event_start_ts":str(raw.get("event_start_ts")),
+            "train_cutoff_ts":str(raw.get("train_cutoff_ts")),"calibration_fit_cutoff_ts":str(raw.get("calibration_fit_cutoff_ts")),
+            "training_event_ids_sha256":training_sha,"pit_record_sha256":declared_pit_sha,"model_artifact_sha256":model_artifact_sha,
+            "model_probability":raw.get("model_probability"),"outcome":y,"outcome_observed_at_ts":str(outcome.get("outcome_observed_at_ts")),
         }
         if prediction_has_quantity:
-            row_binding["quantity_prediction"]=raw.get("quantity_prediction")
-            row_binding["quantity_actual"]=outcome.get("quantity_actual")
+            row_binding["quantity_prediction"]=raw.get("quantity_prediction");row_binding["quantity_actual"]=outcome.get("quantity_actual")
         row_bindings.append(row_binding)
 
     extras=set(outcome_by_id)-seen_prediction_ids
     if extras:raise ValueError("BOUND_VALIDATION_ORPHAN_OUTCOMES:"+",".join(sorted(extras)))
+    extras_folds=set(fold_training_event_ids)-set(seen_fold_order)
+    if extras_folds:raise ValueError("BOUND_VALIDATION_ORPHAN_TRAINING_FOLDS:"+",".join(sorted(str(x) for x in extras_folds)))
 
     cutoff_sequence=[_dt(fold_contracts[fold]["train_cutoff_ts"],"fold_train_cutoff_ts") for fold in seen_fold_order]
     if cutoff_sequence!=sorted(cutoff_sequence):raise ValueError("BOUND_VALIDATION_FOLD_CUTOFF_REVERSED")
 
     thresholds={
-        "min_n":_positive_int(min_n,"min_n"),
-        "ece_max":_finite_float(ece_max,"ece_max"),
+        "min_n":_positive_int(min_n,"min_n"),"ece_max":_finite_float(ece_max,"ece_max"),
         "max_bin_deviation_max":_finite_float(max_bin_deviation_max,"max_bin_deviation_max"),
-        "slope_min":_finite_float(slope_min,"slope_min"),
-        "slope_max":_finite_float(slope_max,"slope_max"),
+        "slope_min":_finite_float(slope_min,"slope_min"),"slope_max":_finite_float(slope_max,"slope_max"),
         "intercept_abs_max":_finite_float(intercept_abs_max,"intercept_abs_max"),
     }
-    if thresholds["ece_max"]<0 or thresholds["max_bin_deviation_max"]<0 or thresholds["intercept_abs_max"]<0:
-        raise ValueError("BOUND_VALIDATION_THRESHOLD_NEGATIVE")
-    if thresholds["slope_min"]>thresholds["slope_max"]:
-        raise ValueError("BOUND_VALIDATION_SLOPE_RANGE_INVALID")
+    if thresholds["ece_max"]<0 or thresholds["max_bin_deviation_max"]<0 or thresholds["intercept_abs_max"]<0:raise ValueError("BOUND_VALIDATION_THRESHOLD_NEGATIVE")
+    if thresholds["slope_min"]>thresholds["slope_max"]:raise ValueError("BOUND_VALIDATION_SLOPE_RANGE_INVALID")
 
     result=validate_probability_rows(metric_rows,**thresholds)
     metrics={
-        "n":result.n,"brier":result.brier,"log_loss":result.log_loss,
-        "mae":_metric_number(result.mae),"rmse":_metric_number(result.rmse),
-        "ece":result.ece,"max_bin_deviation":result.max_bin_deviation,
-        "calibration_slope":result.calibration_slope,"calibration_intercept":result.calibration_intercept,
-        "chronological":result.chronological,
+        "n":result.n,"brier":result.brier,"log_loss":result.log_loss,"mae":_metric_number(result.mae),"rmse":_metric_number(result.rmse),
+        "ece":result.ece,"max_bin_deviation":result.max_bin_deviation,"calibration_slope":result.calibration_slope,
+        "calibration_intercept":result.calibration_intercept,"chronological":result.chronological,
     }
     attestation={
-        "schema_version":SCHEMA_VERSION,
-        "authority":AUTHORITY,
-        "status":"PASS" if result.passed else "FAIL",
-        "passed":bool(result.passed),
-        "sport":resolved_sport,
-        "model_id":resolved_model_id,
-        "model_version":resolved_model_version,
-        "code_git_sha":resolved_code_sha,
-        "prediction_count":len(row_bindings),
-        "fold_order":seen_fold_order,
-        "fold_contracts":fold_contracts,
-        "thresholds":thresholds,
-        "metrics":metrics,
-        "rows":row_bindings,
-        "separate_outcome_binding":True,
-        "pit_hash_binding":True,
-        "market_prices_used_as_model_inputs":False,
-        "can_create_model_p":False,
-        "can_promote":False,
-        "staking_authority":False,
-        "official_authority":False,
+        "schema_version":SCHEMA_VERSION,"authority":AUTHORITY,"status":"PASS" if result.passed else "FAIL","passed":bool(result.passed),
+        "sport":resolved_sport,"model_id":resolved_model_id,"model_version":resolved_model_version,"code_git_sha":resolved_code_sha,
+        "prediction_count":len(row_bindings),"fold_order":seen_fold_order,"fold_contracts":fold_contracts,"thresholds":thresholds,
+        "metrics":metrics,"rows":row_bindings,"separate_outcome_binding":True,"pit_hash_binding":True,"training_membership_binding":True,
+        "market_prices_used_as_model_inputs":False,"can_create_model_p":False,"can_promote":False,"staking_authority":False,"official_authority":False,
     }
     attestation["artifact_sha256"]=validation_attestation_sha256(attestation)
     return attestation
