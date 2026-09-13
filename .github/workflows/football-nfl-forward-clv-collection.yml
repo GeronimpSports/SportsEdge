@@ -87,7 +87,7 @@ jobs:
               > artifacts/football/forward-run/release-status.json
             exit 0
           fi
-          ARTIFACT_SHA="$(sha256sum artifacts/football/model-release/nfl_m2_model.json | awk '{print $1}')"
+          ARTIFACT_SHA="$(python3 -c 'import hashlib,json; from pathlib import Path; p=json.loads(Path("artifacts/football/model-release/nfl_m2_model.json").read_text(encoding="utf-8")); raw=json.dumps(p,sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode("utf-8"); print(hashlib.sha256(raw).hexdigest())')"
           if [[ "$ARTIFACT_SHA" != "$FREEZE_HASH" ]]; then
             echo 'available=false' >> "$GITHUB_OUTPUT"
             jq -n --arg sha "$MODEL_SHA" --arg actual "$ARTIFACT_SHA" --arg expected "$FREEZE_HASH" --argjson run "$RUN_ID" \
