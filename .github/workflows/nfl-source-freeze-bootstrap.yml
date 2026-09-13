@@ -41,13 +41,14 @@ jobs:
                   origin = 'repo://' + identity['path']
               else:
                   asset = Path(identity['path']).name
-                  origin = row['uri']
+                  origin = row.get('origin_uri') or row['uri']
               rows.append((name, origin, row['expected_sha256'], asset))
           for prefix, row in contract['seasonal_sources'].items():
               identity = row['upstream_identity']
+              origin_template = row.get('origin_uri_template') or row['uri_template']
               for season in row['seasons']:
                   asset = identity['asset_template'].format(season=season)
-                  origin = row['uri_template'].format(season=season)
+                  origin = origin_template.format(season=season)
                   expected = row['expected_sha256_by_season'][str(season)]
                   rows.append((f'{prefix}_{season}', origin, expected, asset))
           if len(rows) != 33:
