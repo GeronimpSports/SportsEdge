@@ -41,8 +41,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Verify archive contract before spending any credit
-        run: python -m unittest tests.test_closing_line_archive_v2 -v
+      - name: Verify archive contracts before spending any credit
+        run: python -m unittest tests.test_closing_line_archive_v2 tests.test_mlb_closing_line_start_attestation -v
 
       - name: Attach the append-only data branch
         id: data
