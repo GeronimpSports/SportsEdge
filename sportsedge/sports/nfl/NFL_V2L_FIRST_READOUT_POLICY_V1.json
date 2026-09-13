@@ -1,0 +1,59 @@
+{
+  "schema": "SPORTSEDGE_NFL_V2L_FIRST_READOUT_POLICY_V1",
+  "status": "FROZEN_BEFORE_FIRST_READOUT",
+  "candidate": "NFL_V2L_MATCHUP_SPECIFIC_DRIVE_V1",
+  "inherits_preregistration": "NFL_V2K_PREREG_2026-09-13",
+  "authority": {"model_p": false, "promotion": false, "official": false},
+  "evaluation_seasons": [2020],
+  "excluded_from_untouched_status": [2021, 2022, 2023, 2024, 2025],
+  "season_rationale": "Conservative exposure boundary: 2021-2025 are treated as touched by prior baseline/model work. Only 2020 is admitted as untouched evidence for this candidate. Excluded seasons may be reported descriptively but cannot contribute to PASS/FAIL.",
+  "pass_rule": {
+    "all_required": true,
+    "calibration": {
+      "minimum_n": 500,
+      "slope_min": 0.90,
+      "slope_max": 1.10,
+      "intercept_abs_max": 0.03,
+      "ece_max": 0.05
+    },
+    "signed_key_margin": {
+      "keys": [-7, -3, 3, 7],
+      "max_abs_error_each": 0.005
+    },
+    "predictive": {
+      "primary_metric": "JOINT_SCORE_RMSE",
+      "comparison": "STRICTLY_LOWER_THAN_M1_CALIBRATED_MARKET_V1",
+      "minimum_fold_win_rate": 0.6666666666666666,
+      "minimum_fold_wins": 4,
+      "ties_are_wins": false
+    }
+  },
+  "failure_rule": {
+    "condition": "FAIL_IF_ANY_REQUIRED_CALIBRATION_KEY_NUMBER_OR_PREDICTIVE_GATE_FAILS",
+    "marginal_or_near_miss_override_allowed": false,
+    "post_failure_action": "FREEZE_REJECTION_AND_MOVE_TO_NEW_ARCHITECTURE_IDENTITY",
+    "retune_same_candidate_allowed": false,
+    "reuse_failed_readout_for_new_candidate_tuning": false,
+    "new_architecture_requirement": "A successor must have a new candidate identity and a preregistered material architecture change before any new untouched readout. Parameter-only or threshold-only changes do not qualify."
+  },
+  "one_shot_policy": {
+    "attempt_is_spent_when": "ANY_PREDICTIVE_CALIBRATION_OR_SIGNED_KEY_NUMBER_EVALUATION_VALUE_IS_EMITTED",
+    "attempt_is_not_spent_when": "EXECUTION_STOPS_BEFORE_ANY_PREDICTIVE_CALIBRATION_OR_SIGNED_KEY_NUMBER_EVALUATION_VALUE_IS_EMITTED",
+    "infrastructure_failure_examples": [
+      "source_download_or_cache_failure_before_evaluation",
+      "parser_or_alias_adapter_failure_before_evaluation",
+      "CI_runner_or_dependency_failure_before_evaluation",
+      "missing_or_invalid_provenance_that_blocks_before_evaluation"
+    ],
+    "rerun_after_infrastructure_failure": "ALLOWED_ONLY_WITH_IDENTICAL_BOUND_CANDIDATE_IDENTITY_INPUTS_POLICIES_CODE_AND_DATA_ARTIFACTS_EXCEPT_FOR_INFRASTRUCTURE_REPAIR_THAT_CANNOT_CHANGE_MODEL_OR_EVALUATION_OUTPUT_SEMANTICS",
+    "partial_output_then_failure": "ATTEMPT_SPENT",
+    "manual_deletion_or_hiding_of_emitted_metrics": "DOES_NOT_RESTORE_UNTOUCHED_STATUS"
+  },
+  "reporting_rule": {
+    "excluded_seasons_may_be_shown": true,
+    "excluded_seasons_label": "EXPOSED_DESCRIPTIVE_ONLY",
+    "excluded_seasons_cannot_change_result": true,
+    "result_freeze": "FIRST_SPENT_ATTEMPT_RESULT_IS_IMMEDIATELY_IMMUTABLE_PASS_OR_FAIL"
+  },
+  "notes": "This policy is frozen before the first V2L untouched readout. It operationalizes the V2K preregistration evidence boundary without granting Model_P, promotion, staking, or OFFICIAL authority."
+}
