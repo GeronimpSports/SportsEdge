@@ -24,7 +24,7 @@
       "Historical V2J or play-level readouts are research evidence only and carry no promotion authority."
     ]
   },
-  "nfl_game_market_promotion_floors": {
+  "nfl_game_market_precommitted_thresholds": {
     "freeze_basis": "PRE_2026_PROSPECTIVE_COLLECTION_POLICY; NOT DERIVED_FROM_2026_RESULTS",
     "markets": ["moneyline", "spread", "total"],
     "minimum_model_edge_probability_points": 0.03,
@@ -38,7 +38,8 @@
     "calibration_intercept_abs_max": 0.03,
     "ece_max": 0.025,
     "max_nonempty_bin_deviation": 0.05,
-    "rule": "These are necessary gates, not sufficient authority. Exact model/code/source binding, deterministic replay, paired market evidence, successful CI attestation, PIT integrity, and Truth Gate requirements remain mandatory."
+    "truth_gate_floor_relationship": "These precommitted thresholds do not fabricate a FROZEN record in config/truth_gate_floors.json. That file requires independently reconstructable historical Git provenance. A production-eligible market must satisfy these thresholds plus a legitimately derived and provenance-verified frozen edge floor when the Truth Gate requires one.",
+    "rule": "These are necessary gates, not sufficient authority. Exact model/code/source binding, deterministic replay, paired market evidence, successful CI attestation, PIT integrity, provenance-verified Truth Gate floors, and all other Truth Gate requirements remain mandatory."
   },
   "model_free_price_archive": {
     "status": "ACTIVE_IN_PARALLEL",
@@ -62,20 +63,11 @@
     "actual_start_rule": "If actual-start data are unavailable at capture time, retain the immutable scheduled-kickoff capture and later attach actual-start provenance separately. Eligibility remains based on the frozen pregame scheduled-kickoff window and must fail closed if a game had already actually started before retrieval."
   },
   "play_level_research_generation": {
-    "status": "SEPARATE_PREREGISTRATION_REQUIRED_BEFORE_SEARCH",
+    "status": "PREREGISTERED_SEPARATE_GENERATION",
+    "policy": "config/research/nfl_play_level_research_generation_v1.json",
     "may_extend_exhausted_box_score_budget": false,
     "old_policy_attempt_budget": 10,
-    "old_policy_attempts_spent": 10,
-    "required_before_first_play_level_candidate_result": [
-      "new generation id",
-      "new finite attempt budget",
-      "frozen training and validation windows",
-      "explicit 2024 and 2025 exposure classification",
-      "selection metric",
-      "multiple-comparison policy",
-      "stopping rule",
-      "no claim on 2026 as fresh promotion holdout"
-    ]
+    "old_policy_attempts_spent": 10
   },
   "authority": {
     "changes_production_model": false,
