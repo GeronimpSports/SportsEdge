@@ -41,10 +41,8 @@ def _verified_manifest(payload: dict) -> tuple[str, dict[str, str]]:
     if len(expected) != 64:
         raise SystemExit("NFL_M2_V2_SOURCE_MANIFEST_HASH_MISSING")
     core = {
-        "schema_version": payload.get("schema_version"),
-        "sport": payload.get("sport"),
-        "schedule_anchor_sha256": payload.get("schedule_anchor_sha256"),
-        "sources": payload.get("sources"),
+        key: value for key, value in payload.items()
+        if key not in {"manifest_sha256", "participation_attribution"}
     }
     if manifest_sha256(core) != expected:
         raise SystemExit("NFL_M2_V2_SOURCE_MANIFEST_HASH_MISMATCH")
