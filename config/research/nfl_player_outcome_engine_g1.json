@@ -1,0 +1,118 @@
+{
+  "schema": "SPORTSEDGE_NFL_PLAYER_OUTCOME_ENGINE_G1",
+  "status": "PREREGISTERED_RESEARCH_ONLY",
+  "created_at": "2026-09-13T04:24:00Z",
+  "authority": {
+    "production_authority": false,
+    "runtime_authority": false,
+    "current_football_prop_engine_state": "NO_ENGINE"
+  },
+  "goal": "Build and independently validate NFL player outcome probability distributions from point-in-time football data only.",
+  "public_reference_policy": {
+    "allowed": [
+      "feature-family ideas",
+      "distributional modeling ideas",
+      "point-in-time data-source ideas",
+      "validation architecture ideas",
+      "identity-resolution ideas"
+    ],
+    "forbidden": [
+      "copying public-model probabilities",
+      "treating public backtests as SportsEdge validation",
+      "using external prediction values as model features"
+    ],
+    "initial_references": [
+      "nflverse/nflverse-data",
+      "nflverse/nflfastR",
+      "gmalbert/nfl-predictions player_props package"
+    ]
+  },
+  "generation": {
+    "id": "NFL_PLAYER_OUTCOME_G1",
+    "maximum_candidate_attempts": 6,
+    "attempt_counter_starts_at": 1,
+    "hard_stop_rule": "After six evaluated candidate attempts, stop and preregister a new generation before changing architecture.",
+    "no_threshold_relaxation_after_readout": true
+  },
+  "target_build_order": [
+    "receptions",
+    "receiving_yards",
+    "rushing_yards",
+    "passing_yards",
+    "rush_attempts",
+    "pass_attempts",
+    "pass_completions",
+    "passing_touchdowns",
+    "rushing_touchdowns",
+    "receiving_touchdowns",
+    "any_touchdown"
+  ],
+  "architecture": {
+    "volume_layer": [
+      "team pass attempts",
+      "team rush attempts",
+      "player route and opportunity share",
+      "player target share",
+      "player rush share"
+    ],
+    "efficiency_layer": [
+      "completion probability",
+      "yards per target",
+      "yards after catch",
+      "yards per rush",
+      "opponent-adjusted efficiency"
+    ],
+    "distribution_layer": {
+      "counts": ["poisson", "negative_binomial", "binomial_or_beta_binomial_where_structurally_appropriate"],
+      "continuous_nonnegative": ["gamma", "lognormal", "compound_count_x_efficiency"],
+      "touchdowns": ["zero_inflated_or_hurdle_count_models", "team_touchdown_opportunity_x_player_share"]
+    },
+    "structural_requirement": "Produce a full player outcome distribution rather than only a point estimate."
+  },
+  "point_in_time_feature_contract": {
+    "player_identity": "stable player ID required; player-name-only joins forbidden",
+    "feature_cutoff": "strictly before target kickoff",
+    "rolling_features": "shifted so target game is never included",
+    "injuries_and_status": "timestamped pregame only",
+    "depth_and_participation": "timestamped pregame snapshot or prior-game observed participation only",
+    "weather": "timestamped pregame only",
+    "opponent_features": "derived only from prior games",
+    "external_prediction_values_as_features": false
+  },
+  "required_inputs": [
+    "nflverse play-by-play",
+    "nflverse weekly player statistics",
+    "participation and snap information when point-in-time available",
+    "roster and stable player identifiers",
+    "schedule and kickoff timestamps",
+    "pregame injury and status information",
+    "pregame weather and venue context where relevant"
+  ],
+  "validation": {
+    "split_style": "chronological_walk_forward_only",
+    "random_train_test_split_for_authority": false,
+    "primary_probability_metrics": ["log_loss", "brier"],
+    "calibration_metrics": ["ece", "calibration_slope", "calibration_intercept", "max_nonempty_bin_deviation"],
+    "quantity_metrics": ["mae", "rmse"],
+    "baselines": [
+      "player_recent_mean",
+      "position_and_role_baseline",
+      "simple_opportunity_x_efficiency_baseline"
+    ],
+    "requires_deterministic_replay": true,
+    "requires_artifact_hash_binding": true,
+    "requires_forward_evidence_before_runtime_activation": true
+  },
+  "activation_boundary": {
+    "research_output_label": "RESEARCH_ONLY",
+    "runtime_surface_may_change_only_after": [
+      "frozen candidate artifact",
+      "point-in-time-safe walk-forward validation",
+      "probability calibration pass",
+      "deterministic replay pass",
+      "artifact source and code hash binding",
+      "prospective forward evidence",
+      "certification registry pass"
+    ]
+  }
+}
