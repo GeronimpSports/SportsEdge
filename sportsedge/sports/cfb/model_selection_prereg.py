@@ -1,13 +1,16 @@
 """Fail-closed preregistration gate for CFB model-selection attempts.
 
 This module does not fit or evaluate a model and cannot consume an attempt. It
-only verifies that every candidate specification required by the frozen
-CFB_MODEL_SELECTION_POLICY_V1 is complete before any evaluation is allowed.
+verifies that every candidate specification required by the frozen
+CFB_MODEL_SELECTION_POLICY_V1 is complete *and* has executable family code before
+any evaluation is allowed.
 """
 from __future__ import annotations
 
 import re
 from typing import Any, Mapping
+
+from .candidate_families import IMPLEMENTED_FAMILIES
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 REQUIRED_SPEC_FIELDS = (
@@ -32,6 +35,8 @@ def _sha(value: object) -> bool:
 
 def _candidate_blockers(candidate: Mapping[str, Any], family: str) -> list[str]:
     blockers: list[str] = []
+    if family not in IMPLEMENTED_FAMILIES:
+        blockers.append("EXECUTABLE_FAMILY_IMPLEMENTATION_MISSING")
     if candidate.get("family") != family:
         blockers.append("FAMILY_IDENTITY_MISMATCH")
     if candidate.get("status") != "PREREGISTERED_UNEVALUATED":
@@ -63,7 +68,7 @@ def audit_model_selection_prereg(
     policy: Mapping[str, Any],
     preregistration: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    """Return a deterministic readiness report without fitting or scoring anything."""
+    """Return deterministic readiness without fitting, scoring, or spending an attempt."""
     blockers: list[str] = []
     if policy.get("schema") != "CFB_MODEL_SELECTION_POLICY_V1":
         blockers.append("POLICY_SCHEMA_MISMATCH")
@@ -100,11 +105,18 @@ def audit_model_selection_prereg(
         candidate = specs.get(family)
         if not isinstance(candidate, Mapping):
             row_blockers = ["CANDIDATE_SPEC_MISSING"]
+            if family not in IMPLEMENTED_FAMILIES:
+                row_blockers.append("EXECUTABLE_FAMILY_IMPLEMENTATION_MISSING")
         else:
             row_blockers = _candidate_blockers(candidate, family)
         if row_blockers:
             blockers.append(f"CANDIDATE_INCOMPLETE:{family}")
-        candidate_results.append({"family": family, "complete": not row_blockers, "blockers": row_blockers})
+        candidate_results.append({
+            "family": family,
+            "complete": not row_blockers,
+            "executable": family in IMPLEMENTED_FAMILIES,
+            "blockers": row_blockers,
+        })
 
     ready = not blockers and attempts == 0
     if attempts != 0:
@@ -116,6 +128,7 @@ def audit_model_selection_prereg(
         "status": "READY_FOR_FIRST_EVALUATION" if ready else "BLOCKED_PREREG_INCOMPLETE",
         "candidate_attempt_budget": budget,
         "attempts_consumed": attempts,
+        "implemented_families": sorted(IMPLEMENTED_FAMILIES),
         "candidate_results": candidate_results,
         "blockers": blockers,
         "attempt_consumed_by_this_audit": False,
