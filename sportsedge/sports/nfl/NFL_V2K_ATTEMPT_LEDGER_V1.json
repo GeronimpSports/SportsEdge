@@ -1,7 +1,7 @@
 {
   "schema": "NFL_V2K_ATTEMPT_LEDGER_V1",
   "candidate_family": "NFL_V2K_DRIVE_HIERARCHICAL_JOINT_G1",
-  "status": "FROZEN_BEFORE_IMPLEMENTATION",
+  "status": "IMPLEMENTATION_ADMITTED_EXPERIMENTAL",
   "max_development_attempts": 5,
   "attempts_used": 0,
   "untouched_readout_allowed": false,
@@ -10,6 +10,17 @@
     "promotion": false,
     "staking": false,
     "official": false
+  },
+  "reference_binding": {
+    "schema": "NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1",
+    "status_required": "FROZEN_READY",
+    "reference_table_sha256": "c070519df58d4ef23ec94af48a73eca0d93a339f897bf3376a38fc5259eff357",
+    "raw_source_sha256": "5149f94415e2347cc8fb585a3f67c4493837d9fe4b210e1dc1e9d2052a701208",
+    "builder_code_sha256": "3c0e0aebc1d76348b5997ffc439a7bd3135625a8b64e578541e8adcb3a4360fe",
+    "source_manifest_sha256": "89a18a7efbfacbbcf4d1a4f1e51ce23e39383faa265959cfefb0b869d7ece411",
+    "full_signed_margin_distribution_sha256": "439f1267f33fb1aa6f1714b1d88ef3a0e73771ee7db915b205c5da114b543373",
+    "absolute_mass_tolerance": 0.005,
+    "bound_before_any_untouched_v2k_readout": true
   },
   "attempt_definition": "A materially different fitted specification evaluated on the preregistered development/validation window consumes one attempt. Pure implementation bug fixes that restore the frozen computation without changing intended model behavior do not consume an attempt but require an immutable note.",
   "inheritance": {
@@ -20,7 +31,8 @@
   "implementation_admission": {
     "empirical_key_reference_must_be_frozen_ready": true,
     "preregistration_must_be_merged": true,
-    "uploaded_demo_coefficients_may_be_used_as_fitted_parameters": false
+    "uploaded_demo_coefficients_may_be_used_as_fitted_parameters": false,
+    "admission_conditions_satisfied": true
   },
   "attempts": []
 }
