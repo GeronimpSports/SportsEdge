@@ -6,11 +6,14 @@ from pathlib import Path
 
 from scripts.capture_closing_line_archive import (
     ArchiveError,
+    START_GUARD_FAILURE_MODES,
+    START_GUARD_SCHEDULED,
     build_rows,
     due_events,
     load_policy,
     run,
     window_for,
+    windows_for,
 )
 
 UTC = timezone.utc
@@ -71,18 +74,24 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(window_for(NOW + timedelta(minutes=10), NOW, POLICY), "close")
         self.assertEqual(window_for(NOW + timedelta(minutes=60), NOW, POLICY), "decision")
 
+    def test_overlap_preserves_all_window_memberships(self):
+        self.assertEqual(
+            windows_for(NOW + timedelta(minutes=3), NOW, POLICY),
+            ("t0_prestart", "close"),
+        )
+
     def test_t0_never_admits_at_or_after_start(self):
-        self.assertIsNone(window_for(NOW, NOW, POLICY))
-        self.assertIsNone(window_for(NOW - timedelta(microseconds=1), NOW, POLICY))
-        self.assertIsNone(window_for(NOW - timedelta(minutes=1), NOW, POLICY))
+        self.assertEqual(windows_for(NOW, NOW, POLICY), ())
+        self.assertEqual(windows_for(NOW - timedelta(microseconds=1), NOW, POLICY), ())
+        self.assertEqual(windows_for(NOW - timedelta(minutes=1), NOW, POLICY), ())
 
     def test_outside_windows_is_not_due(self):
-        self.assertIsNone(window_for(NOW + timedelta(minutes=300), NOW, POLICY))
-        self.assertIsNone(window_for(NOW + timedelta(minutes=30), NOW, POLICY))
+        self.assertEqual(windows_for(NOW + timedelta(minutes=300), NOW, POLICY), ())
+        self.assertEqual(windows_for(NOW + timedelta(minutes=30), NOW, POLICY), ())
 
-    def test_due_events_selects_only_in_window(self):
+    def test_due_events_selects_all_memberships(self):
         events = [
-            _event("t0", 1),
+            _event("overlap", 3),
             _event("close", 10),
             _event("far", 300),
             _event("decision", 60),
@@ -90,28 +99,50 @@ class WindowTests(unittest.TestCase):
         ]
         due = due_events(events, NOW, POLICY)
         self.assertEqual(due, {
-            "t0": "t0_prestart",
-            "close": "close",
-            "decision": "decision",
+            "overlap": ("t0_prestart", "close"),
+            "close": ("close",),
+            "decision": ("decision",),
         })
 
 
 class RowTests(unittest.TestCase):
     def test_two_sided_market_produces_rows_labelled_not_evidence(self):
         rows, skipped = build_rows(
-            "americanfootball_nfl", [_odds_event("a", 10)], {"a": "close"}, NOW, POLICY
+            "americanfootball_nfl", [_odds_event("a", 10)], {"a": ("close",)}, NOW, POLICY
         )
         self.assertEqual(len(rows), 2)
         self.assertEqual(skipped, [])
         for row in rows:
             self.assertEqual(row["evidence_class"], "NOT_EVIDENCE")
+            self.assertFalse(row["promotion_authority"])
             self.assertEqual(row["window"], "close")
+            self.assertEqual(row["start_guard"], START_GUARD_SCHEDULED)
+            self.assertEqual(tuple(row["guard_failure_modes"]), START_GUARD_FAILURE_MODES)
+            self.assertEqual(row["actual_start_status"], "UNADJUDICATED")
+            self.assertTrue(row["requires_start_attestation"])
             self.assertNotIn("model_p", row)
             self.assertNotIn("evidence_unit_id", row)
 
+    def test_overlap_duplicates_labels_but_not_observation_identity(self):
+        rows, skipped = build_rows(
+            "americanfootball_nfl",
+            [_odds_event("a", 3)],
+            {"a": ("t0_prestart", "close")},
+            NOW,
+            POLICY,
+        )
+        self.assertEqual(skipped, [])
+        self.assertEqual(len(rows), 4)
+        self.assertEqual({row["window"] for row in rows}, {"t0_prestart", "close"})
+        self.assertEqual(len({row["capture_id"] for row in rows}), 1)
+        self.assertEqual(len({row["fetch_sha256"] for row in rows}), 1)
+        for row in rows:
+            self.assertEqual(row["start_guard"], START_GUARD_SCHEDULED)
+            self.assertEqual(tuple(row["guard_failure_modes"]), START_GUARD_FAILURE_MODES)
+
     def test_t0_row_is_not_evidence_and_remains_prestart(self):
         rows, skipped = build_rows(
-            "mma_mixed_martial_arts", [_odds_event("a", 1)], {"a": "t0_prestart"}, NOW, POLICY
+            "mma_mixed_martial_arts", [_odds_event("a", 1)], {"a": ("t0_prestart",)}, NOW, POLICY
         )
         self.assertEqual(skipped, [])
         self.assertEqual(len(rows), 2)
@@ -121,23 +152,26 @@ class RowTests(unittest.TestCase):
             self.assertNotIn("model_p", row)
             self.assertNotIn("evidence_unit_id", row)
 
-    def test_started_t0_candidate_is_skipped(self):
+    def test_started_candidate_is_skipped_with_guard_provenance(self):
         rows, skipped = build_rows(
-            "mma_mixed_martial_arts", [_odds_event("a", -1)], {"a": "t0_prestart"}, NOW, POLICY
+            "mma_mixed_martial_arts", [_odds_event("a", -1)], {"a": ("t0_prestart",)}, NOW, POLICY
         )
         self.assertEqual(rows, [])
         self.assertEqual(skipped[0]["reason"], "EVENT_ALREADY_STARTED")
+        self.assertEqual(skipped[0]["start_guard"], START_GUARD_SCHEDULED)
+        self.assertEqual(tuple(skipped[0]["guard_failure_modes"]), START_GUARD_FAILURE_MODES)
 
     def test_one_sided_market_is_skipped_not_imputed(self):
         rows, skipped = build_rows(
-            "americanfootball_nfl", [_odds_event("a", 10, outcomes=1)], {"a": "close"}, NOW, POLICY
+            "americanfootball_nfl", [_odds_event("a", 10, outcomes=1)], {"a": ("close",)}, NOW, POLICY
         )
         self.assertEqual(rows, [])
         self.assertEqual(skipped[0]["reason"], "ONE_SIDED_QUOTE_NOT_IMPUTED")
+        self.assertEqual(skipped[0]["start_guard"], START_GUARD_SCHEDULED)
 
     def test_unlisted_book_is_ignored(self):
         rows, _ = build_rows(
-            "americanfootball_nfl", [_odds_event("a", 10, book="bovada")], {"a": "close"}, NOW, POLICY
+            "americanfootball_nfl", [_odds_event("a", 10, book="bovada")], {"a": ("close",)}, NOW, POLICY
         )
         self.assertEqual(rows, [])
 
@@ -194,11 +228,12 @@ class RunTests(unittest.TestCase):
                 opener=self._opener([_event("a", 10)], [_odds_event("a", 10)], calls),
             )
             self.assertIn("paid", calls)
-            self.assertEqual(report["total_rows_written"], 8)  # 2 rows x 4 sports
+            self.assertEqual(report["total_rows_written"], 8)
             files = list(Path(tmp).rglob("*.ndjson"))
             self.assertTrue(files)
             first = files[0].read_text().strip().splitlines()
             self.assertTrue(all(json.loads(line)["evidence_class"] == "NOT_EVIDENCE" for line in first))
+            self.assertTrue(all(json.loads(line)["start_guard"] == START_GUARD_SCHEDULED for line in first))
 
             before = files[0].read_text()
             run(
@@ -211,7 +246,7 @@ class RunTests(unittest.TestCase):
             after = files[0].read_text()
             self.assertTrue(after.startswith(before), "existing captured prices must never be rewritten")
 
-    def test_t0_due_event_works_for_all_four_sports(self):
+    def test_overlap_window_labels_share_capture_identity_for_all_sports(self):
         calls: list[str] = []
         with tempfile.TemporaryDirectory() as tmp:
             report = run(
@@ -219,11 +254,17 @@ class RunTests(unittest.TestCase):
                 policy=POLICY,
                 out_dir=Path(tmp),
                 keys=["k"],
-                opener=self._opener([_event("a", 1)], [_odds_event("a", 1)], calls),
+                opener=self._opener([_event("a", 3)], [_odds_event("a", 3)], calls),
             )
-        self.assertEqual(report["total_rows_written"], 8)
-        self.assertEqual(set(report["sports"]), {"NFL", "CFB", "MLB", "UFC"})
-        self.assertTrue(all("t0_prestart" in entry["windows"] for entry in report["sports"].values()))
+            self.assertEqual(report["total_rows_written"], 16)
+            self.assertEqual(set(report["sports"]), {"NFL", "CFB", "MLB", "UFC"})
+            for entry in report["sports"].values():
+                self.assertEqual(entry["window_memberships_due"], 2)
+                self.assertEqual(set(entry["windows"]), {"t0_prestart", "close"})
+                self.assertEqual(entry["start_guard"], START_GUARD_SCHEDULED)
+            for path in Path(tmp).rglob("*.ndjson"):
+                parsed = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+                self.assertEqual(len({row["capture_id"] for row in parsed}), 1)
 
     def test_dry_run_never_calls_paid_endpoint(self):
         calls: list[str] = []
