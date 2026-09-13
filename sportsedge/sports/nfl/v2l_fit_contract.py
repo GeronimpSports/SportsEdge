@@ -36,13 +36,23 @@ def _sigmoid(x: float) -> float:
     return 1.0/(1.0+math.exp(-x))
 
 def _shrunk_rate(successes: int, n: int, league_rate: float) -> float:
+    if n <= 0:
+        return league_rate
+    # Frozen feature policy permits unshrunk team use only once 200 drives are
+    # available. Below that threshold retain the preregistered league-mean
+    # empirical-Bayes shrinkage; at/above it use the observed team rate.
+    if n >= MIN_UNSHRUNK_DRIVES:
+        return float(successes)/float(n)
     return (successes + PRIOR_DRIVES*league_rate)/(n + PRIOR_DRIVES)
 
 def _prob_map(counts: Mapping[str,int], n: int) -> dict[str,float]:
     return {k:int(v)/n for k,v in counts.items()}
 
 def _shrunk_pace(total_drives: int, games: int, league_mean: float) -> float:
-    if games <= 0: return league_mean
+    if games <= 0:
+        return league_mean
+    if total_drives >= MIN_UNSHRUNK_DRIVES:
+        return float(total_drives)/float(games)
     prior_games=PRIOR_DRIVES/max(league_mean,1e-9)
     return (float(total_drives)+prior_games*league_mean)/(float(games)+prior_games)
 
@@ -116,7 +126,7 @@ def fit_pit(rows: Iterable[DriveRow], *, prediction_cutoff_utc: str, source_mani
 
     fit={
         "schema":FIT_SCHEMA,"prediction_cutoff_utc":cutoff.isoformat(),"source_manifest_sha256":source_manifest_sha256,"feature_policy_sha256":feature_policy_sha256,"code_sha":code_sha,
-        "training_rows":n,"minimum_team_drives_before_unshrunk_use":MIN_UNSHRUNK_DRIVES,"prior_drives":PRIOR_DRIVES,"league_scoring_rate":league_scoring,
+        "training_rows":n,"minimum_team_drives_before_unshrunk_use":MIN_UNSHRUNK_DRIVES,"prior_drives_below_threshold":PRIOR_DRIVES,"league_scoring_rate":league_scoring,
         "base_params":{"drives_mean":mean_drives,"drives_sd":var_drives**0.5,"start_yard_mean":mean_start,"start_yard_sd":var_start**0.5,"shared_efficiency_sd":shared_sd,"outcome_probs":global_probs,"outcome_probs_by_start_bin":by_bin},
         "offense_strength":offense_strength,"defense_strength":defense_strength,"offense_pace_strength":offense_pace,"defense_pace_strength":defense_pace,
         "model_p_authority":False,"promotion_authority":False,"official_authority":False,
