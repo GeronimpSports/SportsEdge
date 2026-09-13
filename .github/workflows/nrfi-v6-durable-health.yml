@@ -15,8 +15,6 @@ on:
       - '.github/workflows/nrfi-v6-durable-health.yml'
       - 'scripts/check_nrfi_durable_health.py'
       - 'tests/test_nrfi_durable_health.py'
-  schedule:
-    - cron: '37 * * * *'
 
 permissions:
   contents: read

@@ -13,8 +13,6 @@ on:
       - 'config/mlb_replay_policy_v1.json'
       - '.github/workflows/mlb-settlement-semantics.yml'
       - '.github/workflows/mlb-validation-audit.yml'
-  schedule:
-    - cron: '49 * * * *'
 
 permissions:
   contents: write

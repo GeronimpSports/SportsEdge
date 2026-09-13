@@ -20,8 +20,6 @@ on:
       - 'scripts/probe_mlb_settlement_semantics.py'
       - 'tests/test_mlb_settlement_evidence.py'
       - '.github/workflows/mlb-settlement-semantics.yml'
-  schedule:
-    - cron: '23 10 * * *'
 
 permissions:
   contents: write
