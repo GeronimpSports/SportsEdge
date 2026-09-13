@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import argparse, hashlib, json
+import argparse, hashlib, json, tempfile
 from collections import Counter
 from datetime import timedelta
 from pathlib import Path
@@ -86,7 +86,14 @@ def build(root:Path,out:Path):
 def self_test():
     x={'handicap':7.5,'period':'FT','marketType':'TOTAL'}
     assert binding('draftkings','12','0',x,('over','under'))==binding('draftkings','12','0',x,('over','under'))
-    print(json.dumps({'status':'SELF_TEST_OK','actual_start_required':True,'actual_start_raw_provenance_required':True,'promotion_authority':False})); return 0
+    with tempfile.TemporaryDirectory() as td:
+        root=Path(td); rel='actual_starts/raw/fixture-1/game_feed.json'; p=root/rel
+        p.parent.mkdir(parents=True); raw=b'{"fixture":"fixture-1"}'; p.write_bytes(raw)
+        assert _raw_bound(root,rel,sha(raw))
+        assert not _raw_bound(root,rel,'0'*64)
+        assert not _raw_bound(root,'actual_starts/raw/fixture-1/missing.json',sha(raw))
+        assert not _raw_bound(root,None,sha(raw))
+    print(json.dumps({'status':'SELF_TEST_OK','actual_start_required':True,'actual_start_raw_provenance_required':True,'raw_sha_binding_exercised':True,'promotion_authority':False})); return 0
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--root',type=Path,default=ROOT);p.add_argument('--out',type=Path,default=OUT);p.add_argument('--self-test',action='store_true');a=p.parse_args()
