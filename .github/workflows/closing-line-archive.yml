@@ -1,12 +1,8 @@
 name: closing-line-archive
 
-# CLOSING_LINE_ARCHIVE_V1 — model-free two-sided price archival for NFL, CFB
-# and MLB. Every row is labelled NOT_EVIDENCE. This lane holds no promotion
-# authority and no evidence-clock authority. It exists solely to accumulate the
-# closing-line dataset that no free source currently provides.
-#
-# The universal t0_prestart lane is scheduled-start-adjacent only: 0 < lead <= 5
-# minutes. The capture code rejects lead <= 0, so post-start prices are unreachable.
+# CLOSING_LINE_ARCHIVE_V2 — model-free price archival. Provider commence_time
+# is capture-planning metadata only. Every row is NOT_EVIDENCE and remains
+# UNADJUDICATED until a separate actual-start attestation exists.
 
 on:
   workflow_dispatch:
@@ -17,9 +13,6 @@ on:
         options: [dry-run, capture]
         default: dry-run
   schedule:
-    # Five-minute cadence gives the all-sports t0_prestart window a real chance
-    # to fire while the free event index still prevents paid calls when nothing
-    # is due. Offset from the NFL confirmation collector's :03/:13/... cadence.
     - cron: '1,6,11,16,21,26,31,36,41,46,51,56 * * * *'
 
 permissions:
@@ -49,7 +42,7 @@ jobs:
           python-version: '3.12'
 
       - name: Verify archive contract before spending any credit
-        run: python -m unittest tests.test_closing_line_archive -v
+        run: python -m unittest tests.test_closing_line_archive_v2 -v
 
       - name: Attach the append-only data branch
         id: data
@@ -65,7 +58,7 @@ jobs:
           fi
           echo "attached=true" >> "$GITHUB_OUTPUT"
 
-      - name: Capture
+      - name: Capture unadjudicated prices
         id: capture
         shell: bash
         run: |
@@ -74,27 +67,36 @@ jobs:
           EXTRA=""
           if [[ "$MODE" == "dry-run" ]]; then EXTRA="--dry-run"; fi
           mkdir -p artifacts/closing-line-archive
-          python scripts/capture_closing_line_archive.py \
-            --policy config/closing_line_archive_policy_v1.json \
+          python scripts/capture_closing_line_archive_v2.py \
+            --policy config/closing_line_archive_policy_v2.json \
             --out-dir .data-branch \
             --status-out artifacts/closing-line-archive/status.json \
             $EXTRA
           echo "rows=$(jq -r '.total_rows_written // 0' artifacts/closing-line-archive/status.json)" >> "$GITHUB_OUTPUT"
 
-      - name: Commit captured prices append-only
-        if: steps.capture.outputs.rows != '0'
+      - name: Attest MLB actual first plays from official feed
+        id: starts
+        if: always() && steps.data.outputs.attached == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/attest_mlb_closing_line_starts.py --data-root .data-branch --lookback-days 3 > artifacts/closing-line-archive/mlb-start-attestation.json
+          echo "rows=$(jq -r '.attestations_written // 0' artifacts/closing-line-archive/mlb-start-attestation.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Commit append-only archive and start attestations
+        if: always() && steps.data.outputs.attached == 'true'
         shell: bash
         run: |
           set -euo pipefail
           cd .data-branch
           git config user.name  'sportsedge-archive[bot]'
           git config user.email 'sportsedge-archive@users.noreply.github.com'
-          git add -A archive/closing-lines
+          git add -A archive/closing-lines archive/closing-line-start-attestations 2>/dev/null || true
           if git diff --cached --quiet; then
             echo 'nothing to commit'
             exit 0
           fi
-          git commit -m "closing-line-archive: ${{ steps.capture.outputs.rows }} rows at $(date -u +%Y-%m-%dT%H:%M:%SZ) [NOT_EVIDENCE]"
+          git commit -m "closing-line-archive: append prices/start attestations [NOT_EVIDENCE]"
           for attempt in 1 2 3; do
             git fetch origin data || true
             git rebase origin/data || git rebase --abort || true
@@ -109,5 +111,5 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: closing-line-archive-status-${{ github.run_id }}
-          path: artifacts/closing-line-archive/status.json
+          path: artifacts/closing-line-archive/
           if-no-files-found: warn
