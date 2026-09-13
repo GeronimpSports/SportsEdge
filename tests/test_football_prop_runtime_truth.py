@@ -5,11 +5,18 @@ import unittest
 
 from sportsedge.edge_floors import load_edge_floor_config, require_frozen_devig_policy, require_production_edge_floor
 from sportsedge.football_prop_surface import FootballPropSurfaceError, require_executable_prop_surface
-from sportsedge.market_ids import canonical_market_id
+from sportsedge.market_ids import (
+    MarketIdError,
+    canonical_evidence_market_id,
+    canonical_market_id,
+    load_market_id_config,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SURFACE = ROOT / "config/football_prop_engine_surface.json"
 FLOORS = ROOT / "config/truth_gate_floors.json"
+BUILD_ORDER = ROOT / "config/research/mlb_cfb_prop_engine_build_order_v1.json"
+MARKET_IDS = ROOT / "config/market_id_canonicalization_v1.json"
 NFL_CERTIFIED_SHA = "3efa5cc92b5ed1bf53a99cbe0d6e7792d01791a77c8f684874d66213b73d9570"
 CFB_CERTIFIED_SHA = "923cfd1be42d31a87d9f31ddffce406d44bfc1bb003d1c625f5a4258f7773f23"
 
@@ -71,6 +78,60 @@ class FootballPropRuntimeTruthTests(unittest.TestCase):
                     {canonical_market_id("mlb", alias) for alias in aliases},
                     {canonical},
                 )
+
+    def test_evidence_identity_is_sport_scoped(self):
+        self.assertEqual(canonical_evidence_market_id("mlb", "game_total"), "mlb:total")
+        self.assertEqual(canonical_evidence_market_id("nfl", "game_total"), "nfl:total")
+        self.assertEqual(canonical_evidence_market_id("cfb", "game_total"), "cfb:total")
+        self.assertEqual(
+            len({canonical_evidence_market_id(sport, "game_total") for sport in ("mlb", "nfl", "cfb")}),
+            3,
+        )
+
+    def test_unknown_market_id_fails_closed(self):
+        with self.assertRaisesRegex(MarketIdError, "UNKNOWN_MARKET_ID"):
+            canonical_market_id("nfl", "unmapped_future_market")
+        with self.assertRaisesRegex(MarketIdError, "UNKNOWN_MARKET_ID"):
+            canonical_evidence_market_id("mlb", "unmapped_future_market")
+
+    def test_registry_canonical_set_is_closed(self):
+        config = load_market_id_config(str(MARKET_IDS))
+        for sport, registry in config["sports"].items():
+            for canonical in registry:
+                with self.subTest(sport=sport, canonical=canonical):
+                    self.assertEqual(canonical_market_id(sport, canonical, config=config), canonical)
+                    self.assertEqual(
+                        canonical_evidence_market_id(sport, canonical, config=config),
+                        f"{sport}:{canonical}",
+                    )
+
+    def test_every_frozen_floor_market_resolves_exactly_once(self):
+        floors = json.loads(FLOORS.read_text(encoding="utf-8"))["truth_gate"]["edge_floors"]
+        for sport, markets in floors.items():
+            for market in markets:
+                with self.subTest(sport=sport, market=market):
+                    canonical = canonical_market_id(sport, market)
+                    self.assertEqual(
+                        canonical_evidence_market_id(sport, market),
+                        f"{sport.lower()}:{canonical}",
+                    )
+
+    def test_every_frozen_prop_market_surface_resolves_exactly_once(self):
+        policy = json.loads(BUILD_ORDER.read_text(encoding="utf-8"))
+        for sport in ("MLB", "CFB"):
+            markets = list(policy[sport]["stage_3_joint_player_distributions"])
+            markets.extend(policy[sport]["stage_7_market_binding"]["markets"])
+            if sport == "MLB":
+                markets.append("home_run")
+            else:
+                markets.append("anytime_td")
+            for market in markets:
+                with self.subTest(sport=sport, market=market):
+                    canonical = canonical_market_id(sport, market)
+                    self.assertEqual(
+                        canonical_evidence_market_id(sport, market),
+                        f"{sport.lower()}:{canonical}",
+                    )
 
     def test_executable_frozen_registry_requires_real_sha(self):
         payload = json.loads(SURFACE.read_text(encoding="utf-8"))
