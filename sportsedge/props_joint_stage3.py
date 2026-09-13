@@ -6,11 +6,12 @@ staking, or sportsbook-binding authority until chronological validation passes.
 from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
-import json, random
+import json, math, random
 from typing import Any, Mapping
 
 STATUS = "RESEARCH_ONLY_NO_MARKET_BINDING"
 BANNED = {"odds","price","line","spread","total","sportsbook","book","market","closing_line","opening_line","implied_probability","american_odds","decimal_odds","over_price","under_price"}
+PMF_ABS_TOLERANCE = 1e-9
 
 def reject_market_inputs(x: Any) -> None:
     if isinstance(x, Mapping):
@@ -22,8 +23,41 @@ def reject_market_inputs(x: Any) -> None:
     elif isinstance(x,(list,tuple)):
         for v in x: reject_market_inputs(v)
 
+def _probability(value: float, name: str) -> float:
+    try:
+        p=float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"INVALID_PROBABILITY:{name}:NOT_NUMERIC") from exc
+    if not math.isfinite(p):
+        raise ValueError(f"INVALID_PROBABILITY:{name}:NONFINITE")
+    if p < 0.0 or p > 1.0:
+        raise ValueError(f"INVALID_PROBABILITY:{name}:OUT_OF_RANGE")
+    return p
+
+def _validated_cdf(pmf: tuple[float,...], name: str) -> tuple[float,...]:
+    if not pmf:
+        raise ValueError(f"INVALID_PMF:{name}:EMPTY")
+    values=[]
+    for index,q in enumerate(pmf):
+        try:
+            mass=float(q)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"INVALID_PMF:{name}:NOT_NUMERIC:{index}") from exc
+        if not math.isfinite(mass):
+            raise ValueError(f"INVALID_PMF:{name}:NONFINITE:{index}")
+        if mass < 0.0:
+            raise ValueError(f"INVALID_PMF:{name}:NEGATIVE:{index}")
+        values.append(mass)
+    total=math.fsum(values)
+    if not math.isclose(total,1.0,rel_tol=0.0,abs_tol=PMF_ABS_TOLERANCE):
+        raise ValueError(f"INVALID_PMF:{name}:SUM_NOT_ONE:{total:.17g}")
+    cdf=[]; running=0.0
+    for mass in values:
+        running+=mass; cdf.append(running)
+    return tuple(cdf)
+
 def _binom(rng: random.Random, n:int, p:float)->int:
-    p=min(.999,max(.001,float(p)))
+    p=_probability(p,"binomial_probability")
     return sum(rng.random()<p for _ in range(max(0,int(n))))
 
 def _gamma_yards(rng:random.Random,n:int,mean:float,cv:float=.65)->int:
@@ -46,16 +80,19 @@ def football_joint(*,sport:str,entity_id:str,volume_pmf:tuple[float,...],mode:st
     if sport not in {"NFL","CFB"}: raise ValueError("BAD_FOOTBALL_SPORT")
     if mode not in {"passing","receiving","rushing"}: raise ValueError("BAD_MODE")
     if paths<100: raise ValueError("TOO_FEW_PATHS")
-    rng=random.Random(seed); cdf=[]; s=0.0
-    for q in volume_pmf: s+=float(q); cdf.append(s)
-    out=[]
+    cdf=_validated_cdf(volume_pmf,"volume_pmf")
+    if mode=="passing":
+        completion_rate=_probability(efficiency["completion_rate"],"completion_rate")
+    elif mode=="receiving":
+        catch_rate=_probability(efficiency["catch_rate"],"catch_rate")
+    rng=random.Random(seed); out=[]
     for _ in range(paths):
-        u=rng.random(); n=next((i for i,c in enumerate(cdf) if u<=c),len(cdf)-1)
+        u=rng.random(); n=next((i for i,c in enumerate(cdf) if u<c),len(cdf)-1)
         if mode=="passing":
-            comp=_binom(rng,n,efficiency["completion_rate"]); y=_gamma_yards(rng,n,efficiency["yards_per_attempt"])
+            comp=_binom(rng,n,completion_rate); y=_gamma_yards(rng,n,efficiency["yards_per_attempt"])
             out.append({"pass_attempts":n,"completions":comp,"passing_yards":y})
         elif mode=="receiving":
-            rec=_binom(rng,n,efficiency["catch_rate"]); y=_gamma_yards(rng,n,efficiency["yards_per_target"])
+            rec=_binom(rng,n,catch_rate); y=_gamma_yards(rng,n,efficiency["yards_per_target"])
             out.append({"targets":n,"receptions":rec,"receiving_yards":y})
         else:
             y=_gamma_yards(rng,n,efficiency["yards_per_carry"])
@@ -65,12 +102,15 @@ def football_joint(*,sport:str,entity_id:str,volume_pmf:tuple[float,...],mode:st
 def mlb_joint(*,entity_id:str,opportunity_pmf:tuple[float,...],role:str,rates:Mapping[str,float],paths:int=50000,seed:int=1)->JointDistribution:
     reject_market_inputs(rates)
     if role not in {"hitter","pitcher"}: raise ValueError("BAD_MLB_ROLE")
-    rng=random.Random(seed); cdf=[]; s=0.0
-    for q in opportunity_pmf:s+=float(q);cdf.append(s)
-    out=[]
+    cdf=_validated_cdf(opportunity_pmf,"opportunity_pmf")
+    strikeout_rate=_probability(rates.get("strikeout_rate",.2),"strikeout_rate")
+    walk_rate=_probability(rates.get("walk_rate",.08),"walk_rate")
+    hit_rate=_probability(rates.get("hit_rate",.25),"hit_rate")
+    extra_base_hit_rate=_probability(rates.get("extra_base_hit_rate",.35),"extra_base_hit_rate")
+    rng=random.Random(seed); out=[]
     for _ in range(paths):
-        u=rng.random(); n=next((i for i,c in enumerate(cdf) if u<=c),len(cdf)-1)
-        k=_binom(rng,n,rates.get("strikeout_rate",.2)); bb=_binom(rng,max(0,n-k),rates.get("walk_rate",.08)); rem=max(0,n-k-bb); h=_binom(rng,rem,rates.get("hit_rate",.25)); xbh=_binom(rng,h,rates.get("extra_base_hit_rate",.35))
+        u=rng.random(); n=next((i for i,c in enumerate(cdf) if u<c),len(cdf)-1)
+        k=_binom(rng,n,strikeout_rate); bb=_binom(rng,max(0,n-k),walk_rate); rem=max(0,n-k-bb); h=_binom(rng,rem,hit_rate); xbh=_binom(rng,h,extra_base_hit_rate)
         if role=="hitter": out.append({"plate_appearances":n,"strikeouts":k,"walks":bb,"hits":h,"extra_base_hits":xbh,"total_bases":h+xbh})
         else: out.append({"batters_faced":n,"pitcher_strikeouts":k,"pitcher_walks_allowed":bb,"pitcher_hits_allowed":h})
     return JointDistribution("MLB",entity_id,tuple(out),seed)

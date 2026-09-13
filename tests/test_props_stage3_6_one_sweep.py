@@ -17,6 +17,41 @@ class PropsSweepTests(unittest.TestCase):
  def test_mlb_pitcher_joint(self):
   d=mlb_joint(entity_id="x",opportunity_pmf=(0,0,0,1),role="pitcher",rates={"strikeout_rate":.3,"walk_rate":.1,"hit_rate":.2,"extra_base_hit_rate":.3},paths=100)
   self.assertIn("pitcher_strikeouts",d.paths[0])
+ def test_invalid_football_pmfs_fail_closed(self):
+  bad_pmfs=((.5,-.1,.6),(.5,float("nan"),.5),(.5,float("inf"),.5),(.2,.2))
+  for pmf in bad_pmfs:
+   with self.subTest(pmf=pmf), self.assertRaisesRegex(ValueError,"INVALID_PMF"):
+    football_joint(sport="NFL",entity_id="p",volume_pmf=pmf,mode="rushing",efficiency={"yards_per_carry":4.5},paths=100)
+ def test_invalid_mlb_pmfs_fail_closed(self):
+  for pmf in ((-.1,1.1),(.4,.4)):
+   with self.subTest(pmf=pmf), self.assertRaisesRegex(ValueError,"INVALID_PMF"):
+    mlb_joint(entity_id="x",opportunity_pmf=pmf,role="hitter",rates={},paths=100)
+ def test_invalid_football_efficiency_probabilities_fail_closed(self):
+  cases=(
+   ("passing",{"completion_rate":-0.2,"yards_per_attempt":7.0},"completion_rate"),
+   ("passing",{"completion_rate":1.4,"yards_per_attempt":7.0},"completion_rate"),
+   ("passing",{"completion_rate":float("nan"),"yards_per_attempt":7.0},"completion_rate"),
+   ("receiving",{"catch_rate":float("inf"),"yards_per_target":8.0},"catch_rate"),
+   ("receiving",{"catch_rate":1.1,"yards_per_target":8.0},"catch_rate"),
+  )
+  for mode,efficiency,name in cases:
+   with self.subTest(mode=mode,name=name), self.assertRaisesRegex(ValueError,f"INVALID_PROBABILITY:{name}"):
+    football_joint(sport="NFL",entity_id="p",volume_pmf=(0,0,0,1),mode=mode,efficiency=efficiency,paths=100)
+ def test_invalid_mlb_rate_probabilities_fail_closed(self):
+  for name,value in (("strikeout_rate",-0.2),("walk_rate",1.4),("hit_rate",float("nan")),("extra_base_hit_rate",float("inf"))):
+   rates={"strikeout_rate":.2,"walk_rate":.1,"hit_rate":.25,"extra_base_hit_rate":.35}
+   rates[name]=value
+   with self.subTest(name=name), self.assertRaisesRegex(ValueError,f"INVALID_PROBABILITY:{name}"):
+    mlb_joint(entity_id="x",opportunity_pmf=(0,0,0,1),role="hitter",rates=rates,paths=100)
+ def test_probability_boundaries_remain_exact_not_clamped(self):
+  zero=football_joint(sport="NFL",entity_id="q0",volume_pmf=(0,0,0,1),mode="passing",efficiency={"completion_rate":0.0,"yards_per_attempt":7.0},paths=100,seed=3)
+  one=football_joint(sport="NFL",entity_id="q1",volume_pmf=(0,0,0,1),mode="passing",efficiency={"completion_rate":1.0,"yards_per_attempt":7.0},paths=100,seed=3)
+  self.assertTrue(all(x["completions"]==0 for x in zero.paths))
+  self.assertTrue(all(x["completions"]==x["pass_attempts"]==3 for x in one.paths))
+  mlb_zero=mlb_joint(entity_id="m0",opportunity_pmf=(0,0,0,1),role="pitcher",rates={"strikeout_rate":0.0,"walk_rate":0.0,"hit_rate":0.0,"extra_base_hit_rate":0.0},paths=100,seed=4)
+  mlb_one=mlb_joint(entity_id="m1",opportunity_pmf=(0,0,0,1),role="pitcher",rates={"strikeout_rate":1.0,"walk_rate":0.0,"hit_rate":0.0,"extra_base_hit_rate":0.0},paths=100,seed=4)
+  self.assertTrue(all(x["pitcher_strikeouts"]==0 for x in mlb_zero.paths))
+  self.assertTrue(all(x["pitcher_strikeouts"]==x["batters_faced"]==3 for x in mlb_one.paths))
  def test_separate_events(self):
   self.assertGreater(football_td(sport="NFL",entity_id="x",pit={"team_expected_touchdowns":3,"player_td_opportunity_share":.2}).probability_at_least_one,0)
   self.assertGreater(mlb_hr(entity_id="x",pit={"expected_plate_appearances":4.3,"hr_probability_per_pa":.06}).probability_at_least_one,0)
