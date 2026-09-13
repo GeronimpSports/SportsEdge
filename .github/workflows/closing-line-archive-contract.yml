@@ -1,0 +1,52 @@
+name: closing-line-archive-contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'config/closing_line_archive_policy_v*.json'
+      - 'scripts/capture_closing_line_archive*.py'
+      - 'scripts/attest_mlb_closing_line_starts.py'
+      - 'tests/test_closing_line_archive*.py'
+      - 'tests/test_mlb_closing_line_start_attestation.py'
+      - '.github/workflows/closing-line-archive*.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.13'
+      - name: Compile archive surfaces
+        run: |
+          python -m py_compile \
+            scripts/capture_closing_line_archive.py \
+            scripts/capture_closing_line_archive_v2.py \
+            scripts/attest_mlb_closing_line_starts.py
+      - name: Verify V2 and MLB start-attestation contracts
+        run: |
+          python -m unittest \
+            tests.test_closing_line_archive_v2 \
+            tests.test_mlb_closing_line_start_attestation \
+            -v
+      - name: Prove V1 cannot be active
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          v1=json.loads(Path('config/closing_line_archive_policy_v1.json').read_text())
+          v2=json.loads(Path('config/closing_line_archive_policy_v2.json').read_text())
+          assert v1['status'].startswith('SUPERSEDED_'), v1['status']
+          assert v2['status']=='ACTIVE', v2['status']
+          assert v2['evidence_class']=='NOT_EVIDENCE'
+          assert v2['promotion_authority'] is False
+          assert v2['evidence_clock_authority'] is False
+          assert v2['window_priority'][0]=='close'
+          PY
