@@ -2,9 +2,6 @@ name: football-vsin-contest-context
 
 on:
   workflow_dispatch:
-  schedule:
-    # Friday/Saturday UTC only. Public page, no paid API or secret.
-    - cron: "*/30 * * * 5,6"
   pull_request:
     paths:
       - "config/football_external_context_v1.json"

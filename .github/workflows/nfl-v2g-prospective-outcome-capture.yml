@@ -2,8 +2,6 @@ name: nfl-v2g-prospective-outcome-capture
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '47 11 * * *'
   pull_request:
     paths:
       - 'scripts/settle_nfl_v2g_prospective_outcomes.py'

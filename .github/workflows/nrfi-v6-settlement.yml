@@ -12,8 +12,6 @@ on:
       - '.github/workflows/nrfi-v6-settlement.yml'
       - 'scripts/score_nrfi_v6_forward_shadow.py'
       - 'scripts/score_nrfi_v6_forward_shadow_v2.py'
-  schedule:
-    - cron: '17 * * * *'
 
 permissions:
   contents: write
