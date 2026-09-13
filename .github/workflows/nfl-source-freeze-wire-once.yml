@@ -7,9 +7,6 @@ on:
     paths:
       - '.github/workflows/nfl-source-freeze-wire-once.yml'
 
-permissions:
-  contents: write
-
 jobs:
   wire:
     runs-on: ubuntu-latest
@@ -17,7 +14,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: hardening/nfl-source-freeze-v2-20260913
-          fetch-depth: 0
 
       - name: Patch promotion workflow exactly once
         run: |
@@ -76,15 +72,10 @@ jobs:
             exit 1
           fi
 
-      - name: Commit wired workflow
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          if git diff --quiet -- .github/workflows/football-nfl-promotion-evidence.yml; then
-            echo 'promotion workflow already wired'
-            exit 0
-          fi
-          git add .github/workflows/football-nfl-promotion-evidence.yml
-          git commit -m 'ci(nfl): consume promotion inputs from frozen release store'
-          git push origin HEAD:hardening/nfl-source-freeze-v2-20260913
+      - name: Export verified patched workflow
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nfl-promotion-workflow-patched
+          path: .github/workflows/football-nfl-promotion-evidence.yml
+          if-no-files-found: error
+          retention-days: 1
