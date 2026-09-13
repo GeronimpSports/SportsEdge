@@ -8,6 +8,7 @@ from sportsedge.sports.nfl.archive_adjudication import adjudicate_nfl_archive_ro
 ROOT = Path(__file__).resolve().parents[1]
 GOV = json.loads((ROOT / "config/nfl_2026_prospective_governance_v1.json").read_text())
 PBP = json.loads((ROOT / "config/research/nfl_play_level_research_generation_v1.json").read_text())
+FLOORS = json.loads((ROOT / "config/truth_gate_floors.json").read_text())
 
 
 class ProspectiveOwnershipTests(unittest.TestCase):
@@ -25,7 +26,7 @@ class ProspectiveOwnershipTests(unittest.TestCase):
         self.assertFalse(GOV["historical_exposure"]["fresh_final_holdout_available_now"])
 
     def test_nfl_numeric_thresholds_are_precommitted(self):
-        gates = GOV["nfl_game_market_promotion_floors"]
+        gates = GOV["nfl_game_market_precommitted_thresholds"]
         self.assertEqual(gates["minimum_model_edge_probability_points"], 0.03)
         self.assertEqual(gates["minimum_mean_clv_probability_points"], 0.005)
         self.assertEqual(gates["minimum_clv_t_stat"], 2.0)
@@ -33,6 +34,12 @@ class ProspectiveOwnershipTests(unittest.TestCase):
         self.assertEqual(gates["minimum_promoted_decisions"], 200)
         self.assertEqual(gates["minimum_distinct_week_clusters"], 12)
         self.assertEqual(gates["freeze_basis"], "PRE_2026_PROSPECTIVE_COLLECTION_POLICY; NOT DERIVED_FROM_2026_RESULTS")
+
+    def test_precommit_does_not_fabricate_truth_gate_floor_provenance(self):
+        self.assertEqual(FLOORS["truth_gate"]["edge_floors"], {})
+        relationship = GOV["nfl_game_market_precommitted_thresholds"]["truth_gate_floor_relationship"]
+        self.assertIn("do not fabricate", relationship)
+        self.assertIn("provenance-verified frozen edge floor", relationship)
 
     def test_play_level_generation_is_new_budget_and_2026_shadow_only(self):
         self.assertFalse(PBP["relationship_to_prior_search"]["extends_prior_budget"])
