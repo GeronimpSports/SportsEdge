@@ -41,8 +41,6 @@ VALID_MODES = frozenset({"AUTO_SELECT", "MANUAL", "HYBRID", "AUTOMATIC"})
 SUPPORTED_GAME_MARKETS = frozenset({"MONEYLINE", "SPREAD", "TOTAL"})
 NFL_MACHINE_VERSION = "NFL_RUN_MACHINE_V1"
 DEFAULT_QUOTE_TTL_SECONDS = 180
-# The canonical live-feature builder targets games in a 120-minute horizon. A
-# snapshot older than that horizon is not treated as current production input.
 DEFAULT_FEATURE_TTL_SECONDS = 120 * 60
 DEFAULT_BOOK_KEY = "draftkings"
 
@@ -120,13 +118,7 @@ def _aware(value: datetime | str, error: str) -> datetime:
 
 def _canonical_hash(value: Any) -> str:
     try:
-        raw = json.dumps(
-            value,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            allow_nan=False,
-        ).encode("utf-8")
+        raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
     except (TypeError, ValueError) as exc:
         raise NFLRunMachineError("NFL_CANONICAL_HASH_INPUT_INVALID") from exc
     return sha256(raw).hexdigest()
@@ -172,12 +164,7 @@ def _raw_implied(odds: Any) -> float:
     return 1.0 / _american_decimal(odds)
 
 
-def _resolve_mode(
-    mode: str,
-    *,
-    live_features: Mapping[str, Any] | None,
-    odds_snapshot: Mapping[str, Any] | None,
-) -> str:
+def _resolve_mode(mode: str, *, live_features: Mapping[str, Any] | None, odds_snapshot: Mapping[str, Any] | None) -> str:
     selected = str(mode or "AUTO_SELECT").strip().upper()
     if selected not in VALID_MODES:
         raise NFLRunMachineError(f"NFL_RUN_MODE_UNSUPPORTED:{selected}")
@@ -191,18 +178,10 @@ def _resolve_mode(
     return "AUTOMATIC"
 
 
-def _load_bound_model(
-    artifact_payload: Mapping[str, Any],
-    *,
-    expected_model_artifact_sha256: str,
-    runtime_code_git_sha: str,
-) -> tuple[Any, str, str, str]:
+def _load_bound_model(artifact_payload: Mapping[str, Any], *, expected_model_artifact_sha256: str, runtime_code_git_sha: str) -> tuple[Any, str, str, str]:
     if not isinstance(artifact_payload, Mapping):
         raise NFLRunMachineError("NFL_MODEL_ARTIFACT_REQUIRED")
-    expected_artifact_sha = _sha256_text(
-        expected_model_artifact_sha256,
-        "NFL_MODEL_ARTIFACT_EXPECTED_SHA256_INVALID",
-    )
+    expected_artifact_sha = _sha256_text(expected_model_artifact_sha256, "NFL_MODEL_ARTIFACT_EXPECTED_SHA256_INVALID")
     runtime_sha = _git_sha(runtime_code_git_sha, "NFL_RUNTIME_CODE_GIT_SHA_INVALID")
     artifact = dict(artifact_payload)
     artifact_sha = _canonical_hash(artifact)
@@ -212,10 +191,7 @@ def _load_bound_model(
         model = load_nfl_m2_model_artifact(artifact, expected_code_git_sha=runtime_sha)
     except ValueError as exc:
         raise NFLRunMachineError(str(exc)) from exc
-    training_sha = _sha256_text(
-        artifact.get("source_manifest_sha256"),
-        "NFL_MODEL_ARTIFACT_SOURCE_SHA256_INVALID",
-    )
+    training_sha = _sha256_text(artifact.get("source_manifest_sha256"), "NFL_MODEL_ARTIFACT_SOURCE_SHA256_INVALID")
     if artifact.get("model_id") != PRODUCTION_NFL_M2_MODEL_ID:
         raise NFLRunMachineError("NFL_MODEL_ARTIFACT_MODEL_ID_MISMATCH")
     if artifact.get("feature_contract") != NFL_M2_FEATURE_CONTRACT:
@@ -223,18 +199,10 @@ def _load_bound_model(
     return model, artifact_sha, runtime_sha, training_sha
 
 
-def _validate_live_features(
-    payload: Mapping[str, Any],
-    *,
-    current: datetime,
-    feature_ttl_seconds: int,
-) -> tuple[str, datetime, list[dict[str, Any]]]:
+def _validate_live_features(payload: Mapping[str, Any], *, current: datetime, feature_ttl_seconds: int) -> tuple[str, datetime, list[dict[str, Any]]]:
     if not isinstance(payload, Mapping) or str(payload.get("sport") or "").lower() != "nfl":
         raise NFLRunMachineError("NFL_LIVE_FEATURE_PAYLOAD_INVALID")
-    source_hash = _sha256_text(
-        payload.get("source_manifest_sha256"),
-        "NFL_LIVE_FEATURE_SOURCE_HASH_INVALID",
-    )
+    source_hash = _sha256_text(payload.get("source_manifest_sha256"), "NFL_LIVE_FEATURE_SOURCE_HASH_INVALID")
     asof = _aware(payload.get("asof_ts"), "NFL_LIVE_FEATURE_ASOF_INVALID")
     if asof > current:
         raise NFLRunMachineError("NFL_LIVE_FEATURE_FROM_FUTURE")
@@ -264,10 +232,7 @@ def _validate_live_features(
             features = row.get(f"{side}_features")
             if not isinstance(features, Mapping):
                 raise NFLRunMachineError(f"NFL_M2_{side.upper()}_FEATURES_REQUIRED:{game_id}")
-            feature_asof = _aware(
-                features.get("feature_asof_ts"),
-                f"NFL_M2_{side.upper()}_FEATURE_ASOF_INVALID:{game_id}",
-            )
+            feature_asof = _aware(features.get("feature_asof_ts"), f"NFL_M2_{side.upper()}_FEATURE_ASOF_INVALID:{game_id}")
             if feature_asof > current:
                 raise NFLRunMachineError(f"NFL_M2_{side.upper()}_FEATURE_FROM_FUTURE:{game_id}")
             if feature_asof >= start:
@@ -281,11 +246,7 @@ def _validate_live_features(
     return source_hash, asof, rows
 
 
-def _validate_odds_snapshot(
-    payload: Mapping[str, Any],
-    *,
-    current: datetime,
-) -> tuple[datetime, list[dict[str, Any]], str | None]:
+def _validate_odds_snapshot(payload: Mapping[str, Any], *, current: datetime) -> tuple[datetime, list[dict[str, Any]], str | None]:
     if not isinstance(payload, Mapping):
         raise NFLRunMachineError("NFL_ODDS_SNAPSHOT_REQUIRED")
     observed = _aware(payload.get("observed_at"), "NFL_ODDS_OBSERVED_AT_REQUIRED")
@@ -309,9 +270,7 @@ def _event_for_game(game: Mapping[str, Any], events: Sequence[Mapping[str, Any]]
     start = _aware(game.get("game_start_ts"), "NFL_GAME_START_INVALID")
     matches: list[dict[str, Any]] = []
     for raw in events:
-        if str(raw.get("home_team") or "").strip() != home:
-            continue
-        if str(raw.get("away_team") or "").strip() != away:
+        if str(raw.get("home_team") or "").strip() != home or str(raw.get("away_team") or "").strip() != away:
             continue
         try:
             event_start = _aware(raw.get("commence_time"), "NFL_ODDS_EVENT_START_INVALID")
@@ -335,10 +294,7 @@ def _book(event: Mapping[str, Any], book_key: str) -> Mapping[str, Any]:
     books = event.get("bookmakers")
     if not isinstance(books, list):
         raise NFLRunMachineError("NFL_ODDS_BOOKMAKERS_MISSING")
-    matches = [
-        row for row in books
-        if isinstance(row, Mapping) and str(row.get("key") or "").strip().lower() == book_key.lower()
-    ]
+    matches = [row for row in books if isinstance(row, Mapping) and str(row.get("key") or "").strip().lower() == book_key.lower()]
     if len(matches) != 1:
         raise NFLRunMachineError(f"NFL_ODDS_BOOKMAKER_COUNT_INVALID:{book_key}")
     return matches[0]
@@ -348,10 +304,7 @@ def _market(book: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     markets = book.get("markets")
     if not isinstance(markets, list):
         raise NFLRunMachineError("NFL_ODDS_MARKETS_MISSING")
-    matches = [
-        row for row in markets
-        if isinstance(row, Mapping) and str(row.get("key") or "").strip().lower() == key.lower()
-    ]
+    matches = [row for row in markets if isinstance(row, Mapping) and str(row.get("key") or "").strip().lower() == key.lower()]
     if len(matches) != 1:
         raise NFLRunMachineError(f"NFL_ODDS_MARKET_COUNT_INVALID:{key}")
     return matches[0]
@@ -367,6 +320,34 @@ def _outcomes(market: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     return out
 
 
+def _exact_outcome_pair(
+    market: Mapping[str, Any],
+    *,
+    expected_names: Sequence[str],
+    error_prefix: str,
+    casefold: bool = False,
+) -> dict[str, Mapping[str, Any]]:
+    rows = _outcomes(market)
+    if len(rows) != 2:
+        raise NFLRunMachineError(f"{error_prefix}_OUTCOME_COUNT_INVALID")
+    normalize = (lambda value: value.casefold()) if casefold else (lambda value: value)
+    expected = {normalize(str(name).strip()) for name in expected_names}
+    if len(expected) != 2:
+        raise NFLRunMachineError(f"{error_prefix}_EXPECTED_PAIR_INVALID")
+    bound: dict[str, Mapping[str, Any]] = {}
+    for row in rows:
+        raw_name = str(row.get("name") or "").strip()
+        key = normalize(raw_name)
+        if key not in expected:
+            raise NFLRunMachineError(f"{error_prefix}_OUTCOME_UNEXPECTED:{raw_name or 'EMPTY'}")
+        if key in bound:
+            raise NFLRunMachineError(f"{error_prefix}_OUTCOME_DUPLICATE:{raw_name}")
+        bound[key] = row
+    if set(bound) != expected:
+        raise NFLRunMachineError(f"{error_prefix}_PAIR_MISSING")
+    return bound
+
+
 def _finite_float(value: Any, error: str) -> float:
     try:
         out = float(value)
@@ -377,12 +358,7 @@ def _finite_float(value: Any, error: str) -> float:
     return out
 
 
-def _event_quotes(
-    game: Mapping[str, Any],
-    event: Mapping[str, Any],
-    *,
-    book_key: str,
-) -> tuple[list[dict[str, Any]], str | None]:
+def _event_quotes(game: Mapping[str, Any], event: Mapping[str, Any], *, book_key: str) -> tuple[list[dict[str, Any]], str | None]:
     book = _book(event, book_key)
     sportsbook = str(book.get("title") or book.get("key") or "").strip() or None
     provider_home = str(game.get("provider_home_team") or "").strip()
@@ -390,21 +366,27 @@ def _event_quotes(
     canonical_home = str(game.get("home_team") or "").strip()
     canonical_away = str(game.get("away_team") or "").strip()
 
-    h2h = {str(x.get("name") or "").strip(): x for x in _outcomes(_market(book, "h2h"))}
-    if provider_home not in h2h or provider_away not in h2h:
-        raise NFLRunMachineError("NFL_MONEYLINE_PAIR_MISSING")
-
-    spreads = {str(x.get("name") or "").strip(): x for x in _outcomes(_market(book, "spreads"))}
-    if provider_home not in spreads or provider_away not in spreads:
-        raise NFLRunMachineError("NFL_SPREAD_PAIR_MISSING")
+    h2h = _exact_outcome_pair(
+        _market(book, "h2h"),
+        expected_names=(provider_home, provider_away),
+        error_prefix="NFL_MONEYLINE",
+    )
+    spreads = _exact_outcome_pair(
+        _market(book, "spreads"),
+        expected_names=(provider_home, provider_away),
+        error_prefix="NFL_SPREAD",
+    )
     home_spread = _finite_float(spreads[provider_home].get("point"), "NFL_SPREAD_LINE_INVALID")
     away_spread = _finite_float(spreads[provider_away].get("point"), "NFL_SPREAD_LINE_INVALID")
     if abs(home_spread + away_spread) > 1e-9:
         raise NFLRunMachineError("NFL_SPREAD_COMPLEMENT_MISMATCH")
 
-    totals = {str(x.get("name") or "").strip().lower(): x for x in _outcomes(_market(book, "totals"))}
-    if "over" not in totals or "under" not in totals:
-        raise NFLRunMachineError("NFL_TOTAL_PAIR_MISSING")
+    totals = _exact_outcome_pair(
+        _market(book, "totals"),
+        expected_names=("over", "under"),
+        error_prefix="NFL_TOTAL",
+        casefold=True,
+    )
     total_over = _finite_float(totals["over"].get("point"), "NFL_TOTAL_LINE_INVALID")
     total_under = _finite_float(totals["under"].get("point"), "NFL_TOTAL_LINE_INVALID")
     if abs(total_over - total_under) > 1e-9:
@@ -430,12 +412,7 @@ def _distribution_hash(rows: Sequence[Mapping[str, Any]]) -> str:
     return _canonical_hash([dict(row) for row in rows])
 
 
-def _readout(
-    readouts: Mapping[str, Any],
-    *,
-    market: str,
-    side: str,
-) -> tuple[float, float]:
+def _readout(readouts: Mapping[str, Any], *, market: str, side: str) -> tuple[float, float]:
     if market == "MONEYLINE":
         return float(readouts["moneyline"][side.lower()]), float(readouts["moneyline"]["tie"])
     if market == "SPREAD":
@@ -445,12 +422,7 @@ def _readout(
     raise NFLRunMachineError(f"NFL_NO_ENGINE:{market}")
 
 
-def _pair_economics(
-    pair: Sequence[Mapping[str, Any]],
-    model_probabilities: Mapping[str, tuple[float, float]],
-    *,
-    stale: bool,
-) -> list[dict[str, Any]]:
+def _pair_economics(pair: Sequence[Mapping[str, Any]], model_probabilities: Mapping[str, tuple[float, float]], *, stale: bool) -> list[dict[str, Any]]:
     if len(pair) != 2:
         raise NFLRunMachineError("NFL_PAIRED_PRICE_REQUIRED_FOR_DEVIG")
     raw = [_raw_implied(row["american_odds"]) for row in pair]
@@ -516,11 +488,7 @@ def _run_canonical(
         expected_model_artifact_sha256=expected_model_artifact_sha256,
         runtime_code_git_sha=runtime_code_git_sha,
     )
-    live_sha, live_asof, games = _validate_live_features(
-        live_features,
-        current=current,
-        feature_ttl_seconds=feature_ttl,
-    )
+    live_sha, live_asof, games = _validate_live_features(live_features, current=current, feature_ttl_seconds=feature_ttl)
     observed_at, events, snapshot_source = _validate_odds_snapshot(odds_snapshot, current=current)
     quote_age = (current - observed_at).total_seconds()
     stale = quote_age > quote_ttl
@@ -532,9 +500,6 @@ def _run_canonical(
         if observed_at >= start:
             raise NFLRunMachineError(f"NFL_QUOTE_NOT_PREGAME:{game_id}")
         event = _event_for_game(game, events)
-
-        # This is the model/market firewall. M2 consumes the market-blind game
-        # row first; no sportsbook line or price exists in this call.
         try:
             distribution = tuple(derive_nfl_m2_score_distribution(model, dict(game)))
         except ValueError as exc:
@@ -544,27 +509,17 @@ def _run_canonical(
         distribution_sha = _distribution_hash(distribution)
 
         quotes, sportsbook = _event_quotes(game, event, book_key=book_key)
-        by_market = {
-            market: [row for row in quotes if row["market"] == market]
-            for market in SUPPORTED_GAME_MARKETS
-        }
+        by_market = {market: [row for row in quotes if row["market"] == market] for market in SUPPORTED_GAME_MARKETS}
         home_spread = next(row["line"] for row in by_market["SPREAD"] if row["side"] == "HOME")
         total_line = next(row["line"] for row in by_market["TOTAL"] if row["side"] == "OVER")
         try:
-            readouts = price_nfl_m2_game_markets(
-                distribution,
-                spread_line=float(home_spread),
-                total_line=float(total_line),
-            )
+            readouts = price_nfl_m2_game_markets(distribution, spread_line=float(home_spread), total_line=float(total_line))
         except ValueError as exc:
             raise NFLRunMachineError(str(exc)) from exc
 
         for market in ("MONEYLINE", "SPREAD", "TOTAL"):
             pair = by_market[market]
-            probabilities = {
-                str(row["side"]): _readout(readouts, market=market, side=str(row["side"]))
-                for row in pair
-            }
+            probabilities = {str(row["side"]): _readout(readouts, market=market, side=str(row["side"])) for row in pair}
             economics = _pair_economics(pair, probabilities, stale=stale)
             for row in economics:
                 results.append(NFLMachineResult(
@@ -598,8 +553,6 @@ def _run_canonical(
     ordered = tuple(sorted(results, key=lambda row: (row.game_id, row.market, row.side)))
     if not ordered:
         raise NFLRunMachineError("NFL_RUN_RESULTS_EMPTY")
-    # Even a technically healthy M2/quote run remains blocked at the wager layer
-    # until promotion evidence and a frozen floor exist.
     return NFLMachineReport(
         mode=mode,
         generated_at_utc=current.isoformat(),
@@ -631,21 +584,8 @@ def run_nfl_machine(
     quote_ttl_seconds: int = DEFAULT_QUOTE_TTL_SECONDS,
     feature_ttl_seconds: int = DEFAULT_FEATURE_TTL_SECONDS,
 ) -> NFLMachineReport:
-    """Resolve mode-owned inputs, then execute the single canonical NFL path.
-
-    The caller must supply the independently frozen artifact SHA-256. The machine
-    recomputes the canonical artifact hash before model deserialization and fails
-    closed on any mismatch.
-
-    MANUAL owns both frozen feature and odds snapshots.
-    HYBRID owns exactly one snapshot and acquires the other through an injected
-    production source callback. This supports both operator-supplied prices and
-    operator-supplied features without creating a second model path.
-    AUTOMATIC acquires both snapshots through injected production callbacks.
-    """
     current = _aware(now, "NFL_NOW_TIMEZONE_REQUIRED")
     selected = _resolve_mode(mode, live_features=live_features, odds_snapshot=odds_snapshot)
-
     if selected == "MANUAL":
         if live_features is None or odds_snapshot is None:
             raise NFLRunMachineError("NFL_MANUAL_REQUIRES_FEATURES_AND_ODDS")
