@@ -34,8 +34,9 @@ class CandidateAuthorityDecision:
     candidate_status: str
     run_it_model_authorized: bool
     paper_only: bool
-    stake_units: float
+    stake_units: float | None
     model_p_authority: bool
+    staking_authority: bool
     reason: str
 
 
@@ -53,6 +54,7 @@ def candidate_authority(candidate: Mapping[str, Any]) -> CandidateAuthorityDecis
             paper_only=True,
             stake_units=0.0,
             model_p_authority=False,
+            staking_authority=False,
             reason=f"NFL_CANDIDATE_NOT_AUTHORIZED:{status}",
         )
 
@@ -63,6 +65,7 @@ def candidate_authority(candidate: Mapping[str, Any]) -> CandidateAuthorityDecis
             paper_only=True,
             stake_units=0.0,
             model_p_authority=False,
+            staking_authority=False,
             reason=f"NFL_CANDIDATE_STATUS_NOT_PROMOTED:{status}",
         )
 
@@ -80,16 +83,20 @@ def candidate_authority(candidate: Mapping[str, Any]) -> CandidateAuthorityDecis
             paper_only=True,
             stake_units=0.0,
             model_p_authority=False,
+            staking_authority=False,
             reason="NFL_PROMOTED_CANDIDATE_AUTHORITY_INCOMPLETE:" + ",".join(missing),
         )
 
+    # Promotion authorizes the model only. Stake size belongs to a separate,
+    # current-price edge/risk/Kelly decision and must never be manufactured here.
     return CandidateAuthorityDecision(
         candidate_status=status,
         run_it_model_authorized=True,
         paper_only=False,
-        stake_units=1.0,
+        stake_units=None,
         model_p_authority=True,
-        reason="NFL_CANDIDATE_AUTHORIZED",
+        staking_authority=False,
+        reason="NFL_CANDIDATE_MODEL_AUTHORIZED_STAKING_SEPARATE",
     )
 
 

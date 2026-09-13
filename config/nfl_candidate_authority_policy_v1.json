@@ -1,6 +1,6 @@
 {
   "schema_version": "SPORTSEDGE_NFL_CANDIDATE_AUTHORITY_POLICY_V1",
-  "policy_status": "FROZEN",
+  "policy_status": "DRAFT_PRE_EVIDENCE_HUMAN_REVIEW_REQUIRED",
   "run_it_model_selection_requires": [
     "candidate_status=PROMOTED",
     "promotion_authority=true",
@@ -26,6 +26,12 @@
     "may_size_stake": false,
     "paper_only": true,
     "stake_units": 0.0
+  },
+  "authorized_model_behavior": {
+    "model_authority_only": true,
+    "may_size_stake": false,
+    "stake_units": null,
+    "staking_requires_separate_current_price_edge_risk_policy": true
   },
   "reserved_2026_stream": {
     "role": "PROSPECTIVE_FORWARD_EVIDENCE",
