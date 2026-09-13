@@ -1,0 +1,23 @@
+{
+  "schema": "SPORTSEDGE_NFL_V2K_BENCHMARK_POLICY_V1",
+  "status": "FROZEN_BEFORE_FIRST_READOUT",
+  "candidate": "NFL_V2K_FOOTBALL_NATIVE_DRIVE_V1",
+  "benchmark_id": "M1_CALIBRATED_MARKET_V1",
+  "role": "EVALUATION_COMPARATOR_ONLY",
+  "sportsbook_inputs_allowed_in_model_fit": false,
+  "sportsbook_inputs_allowed_in_candidate_feature_selection": false,
+  "capture_timing": "PREGAME_ONLY",
+  "moneyline_probability_rule": "PAIRED_TWO_WAY_MULTIPLICATIVE_DEVIG_V1",
+  "spread_margin_rule": "NEGATE_HOME_SPREAD",
+  "total_rule": "USE_CAPTURED_GAME_TOTAL",
+  "score_reconstruction_rule": "home=(total+margin)/2; away=(total-margin)/2",
+  "primary_fold_metric": "JOINT_SCORE_RMSE",
+  "fold_win_rule": "STRICTLY_LOWER_THAN_BENCHMARK",
+  "ties_are_wins": false,
+  "missing_capture_behavior": "BLOCK_FOLD",
+  "benchmark_source_manifest_required": true,
+  "no_post_readout_change": true,
+  "model_p_authority": false,
+  "promotion_authority": false,
+  "official_authority": false
+}
