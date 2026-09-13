@@ -1,0 +1,129 @@
+{
+  "schema_version": "SPORTSEDGE_NFL_V2K_PREREG_V1",
+  "candidate_id": "nfl_v2k_hierarchical_joint_drive_candidate",
+  "status": "PREREGISTERED_RESEARCH_ONLY",
+  "preregistration_base_sha": "9f096a1bcdc36b209d42471fbe56ebed522b565b",
+  "predecessor_candidate": "nfl_v2j_conditioned_drive_regime_candidate",
+  "evidence_inheritance": false,
+  "problem_statement": "V2K is a new experimental candidate, not a retune or promotion of V2J. It tests whether a market-blind hierarchical team-strength layer, a drive-level integer scoring process, an explicit real final-regulation-possession mechanism, and one shared joint score path distribution can reproduce football score structure and support coherent ML/spread/total pricing. Uploaded prototype coefficients and stand-in key-number checks are engineering demonstrations only and have no fitted or promotion authority.",
+  "architecture": {
+    "class": "HIERARCHICAL_STRENGTH_PLUS_JOINT_DRIVE_SCORE_DISTRIBUTION",
+    "hierarchical_strength": {
+      "method": "EMPIRICAL_BAYES_VARIANCE_COMPONENT_SHRINKAGE",
+      "low_sample_teams_shrink_more": true,
+      "unknown_team_policy": "LEAGUE_MEAN",
+      "market_inputs_forbidden": true
+    },
+    "drive_process": {
+      "joint_possession_sequence_required": true,
+      "integer_scoring_states_required": true,
+      "ordinary_drive_parameters_fit_from_training_only": true,
+      "final_regulation_possession": {
+        "required": true,
+        "must_be_real_scheduled_possession": true,
+        "phantom_post_regulation_possession_forbidden": true,
+        "frozen_pre_drive_state_buckets": [
+          "TIED",
+          "OFFENSE_TRAILS_BY_1_TO_3",
+          "OFFENSE_LEADS_BY_1_TO_3",
+          "OTHER"
+        ],
+        "frozen_outcome_states": [
+          "NO_SCORE",
+          "FIELD_GOAL",
+          "TOUCHDOWN",
+          "OTHER_SCORING"
+        ],
+        "fit_policy": "Categorical probabilities estimated from real historical final regulation possessions in the frozen training interval only. No coefficient may be selected to hit a key-number frequency."
+      },
+      "overtime": {
+        "explicit": true,
+        "must_be_versioned": true,
+        "simplification_allowed_only_if_frozen_before_first_readout": true
+      }
+    },
+    "joint_distribution": {
+      "single_path_set_prices": [
+        "MONEYLINE",
+        "SPREAD",
+        "TOTAL"
+      ],
+      "pushes_reported_separately": true,
+      "expected_value_unconditional_with_push_zero_return": true,
+      "market_binding_occurs_after_model_distribution": true
+    },
+    "key_number_policy": "Historical key-number frequencies are validation diagnostics only. They may not be a loss term, fitting target, coefficient target, hyperparameter criterion, candidate-selection objective, or manual tuning target.",
+    "market_blind": true
+  },
+  "forbidden_inputs": [
+    "sportsbook spread",
+    "sportsbook total",
+    "moneyline",
+    "closing line",
+    "betting splits",
+    "capper picks",
+    "social-media picks",
+    "historical key-number frequencies as fitting or selection targets",
+    "V2J or earlier candidate residuals as numeric tuning targets",
+    "2021-2025 diagnostic outcomes as tuning targets",
+    "2026 outcomes for fitting, selection, or backfill"
+  ],
+  "data_boundary": {
+    "training_interval": "2016-01-01/2020-12-31",
+    "training_role": "FIT_ONLY_MARKET_BLIND_FOOTBALL_EVENTS",
+    "key_number_reference_interval": "2016-01-01/2020-12-31",
+    "key_number_reference_role": "POST_FIT_STRUCTURAL_DIAGNOSTIC_ONLY_NOT_A_HOLDOUT",
+    "exposed_diagnostic_interval": "2021-01-01/2025-12-31",
+    "exposed_diagnostic_role": "EXPOSED_NON_PROMOTIONAL_DIAGNOSTIC_ONLY",
+    "active_2026_boundary": "RESERVED_BY_EXISTING_NFL_PROSPECTIVE_GOVERNANCE_AND_NOT_AVAILABLE_AS_A_FRESH_V2K_HOLDOUT",
+    "fresh_promotion_holdout": "UNALLOCATED_REQUIRED_BEFORE_PROMOTION",
+    "source_policy": "Exact nflverse source URLs, release identifiers, file hashes, row counts, and extraction rules must be frozen in the V2K source manifest before the first fitted readout."
+  },
+  "frozen_extraction_policy": {
+    "regulation_quarters": [1, 2, 3, 4],
+    "final_regulation_possession_definition": "Last regulation offensive drive for each game represented by a non-null drive identifier and possession team, using the final play state of that drive for score delta. Administrative rows without a possession team do not create drives.",
+    "pregame_and_market_columns": "MUST_NOT_BE_USED",
+    "game_final_score_source": "nflverse schedule/game result data or final PBP scoreboard, with exact choice and hash recorded before readout",
+    "key_numbers_absolute_margin": [3, 7, 6, 10, 14]
+  },
+  "attempt_budget": {
+    "statistical_first_readout_attempts": 1,
+    "post_first_readout_parameter_retunes": 0,
+    "post_first_readout_architecture_mutations": 0,
+    "software_bug_fix_policy": "Before the first historical fitted readout, implementation-only fixes that make code conform to this preregistration are permitted and must be ledgered. After the first readout, any change capable of changing statistical behavior requires a new candidate ID and preregistration.",
+    "manual_key_number_tuning": 0
+  },
+  "frozen_evaluation_gates": {
+    "signed_key_number_tolerance": 0.005,
+    "key_number_gate_role": "STRUCTURAL_DIAGNOSTIC_NOT_PROMOTION_AUTHORITY",
+    "fold_win_rate_min": 0.65,
+    "calibration_rules": "UNCHANGED_FROM_ACTIVE_FROZEN_NFL_PROMOTION_POLICY",
+    "mc_probability_standard_error_max": 0.0025,
+    "mc_precision_definition": "For each priced Bernoulli win event, SE=sqrt(p*(1-p)/n); report event-specific SE and maximum. Margin-point standard error may not substitute for probability SE.",
+    "deterministic_replay_required": true,
+    "exact_source_manifest_required": true,
+    "exact_code_sha_binding_required": true,
+    "prospective_clv_required_for_promotion": true,
+    "fresh_untouched_readout_required_for_promotion": true,
+    "truth_gate_unchanged": true
+  },
+  "implementation_constraints": {
+    "first_fitted_v2k_readout_must_be_untuned": true,
+    "production_m2_files_may_not_change": true,
+    "production_registry_may_not_consume_v2k": true,
+    "prior_candidate_evidence_may_not_be_rewritten": true,
+    "pricing_enabled": false,
+    "official_card_eligible": false
+  },
+  "authority": {
+    "promotion_authority": false,
+    "production_model_changed": false,
+    "production_registry_consumes_candidate": false,
+    "market_eligibility_changed": false,
+    "edge_floor_changed": false,
+    "model_p_authority": false,
+    "official_status_granted": false,
+    "staking_authority": false
+  },
+  "nfl_props": "NO_ENGINE"
+}
