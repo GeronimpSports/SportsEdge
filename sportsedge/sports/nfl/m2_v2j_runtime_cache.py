@@ -1,23 +1,28 @@
 """Unactivated exact-math runtime cache for the preregistered NFL V2J readout.
 
 This module exists only as a contingency if the frozen first-readout workflow hits
-its hosted-runner timeout.  It deliberately keeps the same conditional drive
+its hosted-runner timeout. It deliberately keeps the same conditional drive
 probabilities, ``np.outer`` construction, masked ``sum`` operations, and
-accumulation order as ``m2_v2j_validation._market_readout``.  The only reused
-objects are deterministic repeated convolutions, safety PMFs, and integer support
-masks whose values do not depend on the shared-environment probability weights.
+accumulation order as ``m2_v2j_validation._market_readout``. Reuse is limited to
+market-blind deterministic work whose inputs are invariant for a held-out game.
 
-Nothing imports this module from the active V2J workflow.  It grants no Model_P,
+Nothing imports this module from the active V2J workflow. It grants no Model_P,
 promotion, staking, OFFICIAL, or rerun authority.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 
-from .m2_v2i_candidate import _combine_pmfs, _repeat_convolution, _safety_pmf, _safety_probability
-from .m2_v2j_candidate import conditioned_drive_probabilities
+from .m2_v2i_candidate import (
+    _combine_pmfs,
+    _offense_drive_probabilities,
+    _repeat_convolution,
+    _safety_pmf,
+    _safety_probability,
+)
+from .m2_v2j_candidate import _feature_vector, _logistic, _logit
 from .m2_v2j_validation import _KEYS, _clip, _float
 
 
@@ -25,11 +30,62 @@ class NFLV2JRuntimeCacheError(ValueError):
     pass
 
 
+def _prepare_conditioning(
+    model: Any,
+    *,
+    offense: str,
+    defense: str,
+    offense_features: Mapping[str, Any],
+    defense_features: Mapping[str, Any],
+) -> tuple[float, dict[int, float], float]:
+    """Precompute only values invariant across shared-environment support.
+
+    Operation order mirrors ``conditioned_drive_probabilities`` exactly through
+    the unscaled strength and base-drive calculation. Market-blind validation is
+    still executed through ``_feature_vector`` before any cached value exists.
+    """
+    ov = _feature_vector(offense_features)
+    dv = _feature_vector(defense_features)
+    if len(ov) != len(model.feature_means) or len(dv) != len(model.feature_means):
+        raise ValueError("NFL_M2_V2J_FEATURE_DIMENSION_MISMATCH")
+    diff = [
+        (o - d - model.feature_means[i]) / model.feature_scales[i]
+        for i, (o, d) in enumerate(zip(ov, dv))
+    ]
+    strength = sum(x * w for x, w in zip(diff, model.conditioning_weights))
+    base = _offense_drive_probabilities(model.base_drive_model, offense, defense)
+    scoring_base = 1.0 - base.get(0, 0.0)
+    return strength, base, scoring_base
+
+
+def _condition_from_prepared(
+    prepared: tuple[float, dict[int, float], float],
+    *,
+    shared_environment: float,
+) -> dict[int, float]:
+    """Apply one environment using the frozen arithmetic sequence."""
+    strength_raw, base, scoring_base = prepared
+    strength = max(
+        -2.5,
+        min(2.5, strength_raw / 14.0 + float(shared_environment) * 0.12),
+    )
+    scoring_new = _logistic(_logit(scoring_base) + strength)
+    if scoring_base <= 0.0:
+        return dict(base)
+    scale = scoring_new / scoring_base
+    out = {
+        points: (prob * scale if points != 0 else 1.0 - scoring_new)
+        for points, prob in base.items()
+    }
+    total = sum(out.values())
+    return {points: prob / total for points, prob in sorted(out.items())}
+
+
 def market_readout_exact_cached(model: Any, row: dict[str, Any]) -> dict[str, Any]:
     """Return the V2J market readout while reusing exact deterministic work.
 
     Floating-point probability operations intentionally remain in the same order
-    as the frozen reference implementation.  If score support ever changes across
+    as the frozen reference implementation. If score support ever changes across
     shared-environment rows, this contingency fails closed rather than applying a
     stale mask.
     """
@@ -47,6 +103,21 @@ def market_readout_exact_cached(model: Any, row: dict[str, Any]) -> dict[str, An
     away_safety_p = _safety_probability(base, away, home)
     regimes = tuple(base.possession_regime)
 
+    home_prepared = _prepare_conditioning(
+        model,
+        offense=home,
+        defense=away,
+        offense_features=hf,
+        defense_features=af,
+    )
+    away_prepared = _prepare_conditioning(
+        model,
+        offense=away,
+        defense=home,
+        offense_features=af,
+        defense_features=hf,
+    )
+
     home_safety = {
         int(away_drives): _safety_pmf(int(away_drives), home_safety_p)
         for _, away_drives, _ in regimes
@@ -61,22 +132,8 @@ def market_readout_exact_cached(model: Any, row: dict[str, Any]) -> dict[str, An
     masks: dict[tuple[int, int], dict[str, Any]] = {}
 
     for env, env_weight in model.shared_environment:
-        home_drive = conditioned_drive_probabilities(
-            model,
-            offense=home,
-            defense=away,
-            offense_features=hf,
-            defense_features=af,
-            shared_environment=env,
-        )
-        away_drive = conditioned_drive_probabilities(
-            model,
-            offense=away,
-            defense=home,
-            offense_features=af,
-            defense_features=hf,
-            shared_environment=env,
-        )
+        home_drive = _condition_from_prepared(home_prepared, shared_environment=env)
+        away_drive = _condition_from_prepared(away_prepared, shared_environment=env)
 
         home_offense: dict[int, dict[int, float]] = {}
         away_offense: dict[int, dict[int, float]] = {}
