@@ -87,7 +87,7 @@ def football_joint(*,sport:str,entity_id:str,volume_pmf:tuple[float,...],mode:st
         catch_rate=_probability(efficiency["catch_rate"],"catch_rate")
     rng=random.Random(seed); out=[]
     for _ in range(paths):
-        u=rng.random(); n=next((i for i,c in enumerate(cdf) if u<=c),len(cdf)-1)
+        u=rng.random(); n=next((i for i,c in enumerate(cdf) if u<c),len(cdf)-1)
         if mode=="passing":
             comp=_binom(rng,n,completion_rate); y=_gamma_yards(rng,n,efficiency["yards_per_attempt"])
             out.append({"pass_attempts":n,"completions":comp,"passing_yards":y})
@@ -109,7 +109,7 @@ def mlb_joint(*,entity_id:str,opportunity_pmf:tuple[float,...],role:str,rates:Ma
     extra_base_hit_rate=_probability(rates.get("extra_base_hit_rate",.35),"extra_base_hit_rate")
     rng=random.Random(seed); out=[]
     for _ in range(paths):
-        u=rng.random(); n=next((i for i,c in enumerate(cdf) if u<=c),len(cdf)-1)
+        u=rng.random(); n=next((i for i,c in enumerate(cdf) if u<c),len(cdf)-1)
         k=_binom(rng,n,strikeout_rate); bb=_binom(rng,max(0,n-k),walk_rate); rem=max(0,n-k-bb); h=_binom(rng,rem,hit_rate); xbh=_binom(rng,h,extra_base_hit_rate)
         if role=="hitter": out.append({"plate_appearances":n,"strikeouts":k,"walks":bb,"hits":h,"extra_base_hits":xbh,"total_bases":h+xbh})
         else: out.append({"batters_faced":n,"pitcher_strikeouts":k,"pitcher_walks_allowed":bb,"pitcher_hits_allowed":h})
