@@ -1,0 +1,62 @@
+name: NFL V2K Empirical Reference Build
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/nfl/build_v2k_empirical_key_reference.py'
+      - 'sportsedge/sports/nfl/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1.json'
+      - 'sportsedge/sports/nfl/NFL_V2K_ATTEMPT_LEDGER_V1.json'
+      - '.github/workflows/nfl-v2k-reference-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-reference:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone exact workflow commit without marketplace actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
+          cd repo
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach "${GITHUB_SHA}"
+
+      - name: Download pinned nflverse game log
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/nflverse/nfldata/dffc0c00a5a2e6b87f4354a23cd213a617149971/data/games.csv' \
+            --output /tmp/nflverse-games.csv
+
+      - name: Build preregistered signed-key reference
+        run: |
+          set -euo pipefail
+          cd repo
+          python3 scripts/nfl/build_v2k_empirical_key_reference.py \
+            --input /tmp/nflverse-games.csv \
+            --output /tmp/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1.json \
+            --generated-at-utc '2026-09-13T15:20:00Z'
+          echo '=== GENERATED REFERENCE ==='
+          cat /tmp/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1.json
+          echo '=== ARTIFACT SHA256 ==='
+          sha256sum /tmp/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1.json
+
+      - name: Verify checked-in frozen reference when present
+        run: |
+          set -euo pipefail
+          cd repo
+          checked='sportsedge/sports/nfl/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1.json'
+          if grep -q '"status": "FROZEN_READY"' "$checked"; then
+            cmp --silent /tmp/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1.json "$checked" || {
+              echo 'checked-in FROZEN_READY reference does not byte-match deterministic rebuild'
+              diff -u "$checked" /tmp/NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1.json || true
+              exit 2
+            }
+          else
+            echo 'reference is not frozen yet; generation-only phase'
+          fi
