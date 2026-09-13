@@ -1,7 +1,9 @@
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from sportsedge.sports.cfb import model_selection_prereg as prereg_module
 from sportsedge.sports.cfb.model_selection_prereg import audit_model_selection_prereg
 
 
@@ -37,13 +39,25 @@ class TestCFBModelSelectionPrereg(unittest.TestCase):
         self.assertIn("CANDIDATE_PREREGISTRATION_MISSING", out["blockers"])
         self.assertEqual(len(out["candidate_results"]), 4)
 
-    def test_all_four_complete_preregistered_candidates_make_first_evaluation_ready(self):
+    def test_complete_json_cannot_unlock_unimplemented_families(self):
         policy = self.policy()
         prereg = {"candidates": {family: self.complete_candidate(family) for family in policy["candidate_families_predeclared"]}}
         out = audit_model_selection_prereg(policy, prereg)
+        self.assertEqual(out["status"], "BLOCKED_PREREG_INCOMPLETE")
+        missing = [row for row in out["candidate_results"] if not row["executable"]]
+        self.assertEqual(len(missing), 3)
+        self.assertTrue(all("EXECUTABLE_FAMILY_IMPLEMENTATION_MISSING" in row["blockers"] for row in missing))
+        self.assertEqual(out["implemented_families"], ["EQUAL_WEIGHT_HARD_SWITCH"])
+        self.assertFalse(out["attempt_consumed_by_this_audit"])
+
+    def test_all_four_complete_and_executable_can_make_first_evaluation_ready(self):
+        policy = self.policy()
+        prereg = {"candidates": {family: self.complete_candidate(family) for family in policy["candidate_families_predeclared"]}}
+        with patch.object(prereg_module, "IMPLEMENTED_FAMILIES", frozenset(policy["candidate_families_predeclared"])):
+            out = audit_model_selection_prereg(policy, prereg)
         self.assertEqual(out["status"], "READY_FOR_FIRST_EVALUATION")
         self.assertEqual(out["blockers"], [])
-        self.assertTrue(all(row["complete"] for row in out["candidate_results"]))
+        self.assertTrue(all(row["complete"] and row["executable"] for row in out["candidate_results"]))
         self.assertFalse(out["attempt_consumed_by_this_audit"])
 
     def test_missing_hash_blocks_candidate(self):
@@ -67,7 +81,8 @@ class TestCFBModelSelectionPrereg(unittest.TestCase):
         policy = self.policy()
         policy["attempts_consumed"] = 1
         prereg = {"candidates": {family: self.complete_candidate(family) for family in policy["candidate_families_predeclared"]}}
-        out = audit_model_selection_prereg(policy, prereg)
+        with patch.object(prereg_module, "IMPLEMENTED_FAMILIES", frozenset(policy["candidate_families_predeclared"])):
+            out = audit_model_selection_prereg(policy, prereg)
         self.assertEqual(out["status"], "BLOCKED_PREREG_INCOMPLETE")
         self.assertIn("FIRST_EVALUATION_GATE_REQUIRES_ZERO_ATTEMPTS_CONSUMED", out["blockers"])
 
