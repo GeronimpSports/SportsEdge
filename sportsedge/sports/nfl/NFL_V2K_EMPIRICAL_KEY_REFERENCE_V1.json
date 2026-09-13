@@ -1,0 +1,39 @@
+{
+  "schema": "NFL_V2K_EMPIRICAL_KEY_REFERENCE_V1",
+  "status": "BLOCKED_REFERENCE_NOT_BUILT",
+  "authority": "NONE",
+  "purpose": "Independent signed historical margin-mass reference for V2K key-number validation.",
+  "required_signed_keys": [-7, -3, 3, 7],
+  "absolute_mass_tolerance": 0.005,
+  "source_requirements": {
+    "real_historical_games_only": true,
+    "sportsbook_prices_forbidden": true,
+    "v2k_simulations_forbidden": true,
+    "hand_entered_reference_values_forbidden": true,
+    "source_manifest_required": true,
+    "raw_source_sha256_required": true,
+    "builder_code_sha256_required": true,
+    "season_scope_required": true,
+    "game_count_required": true
+  },
+  "freeze_requirements": {
+    "signed_probabilities_required": true,
+    "sum_of_full_margin_distribution_not_required_but_recommended": true,
+    "built_before_any_untouched_v2k_readout": true,
+    "immutable_after_untouched_readout": true
+  },
+  "reference": {
+    "season_scope": null,
+    "game_count": null,
+    "raw_source_sha256": null,
+    "builder_code_sha256": null,
+    "source_manifest_sha256": null,
+    "signed_margin_mass": {
+      "-7": null,
+      "-3": null,
+      "3": null,
+      "7": null
+    }
+  },
+  "block_reason": "Real historical source bytes and the frozen signed-key table have not yet been bound on main. Uploaded demonstration values are not admissible evidence."
+}
