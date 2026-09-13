@@ -73,7 +73,7 @@ jobs:
           EXTRA=""
           if [[ "$MODE" == "dry-run" ]]; then EXTRA="--dry-run"; fi
           mkdir -p artifacts/closing-line-archive
-          python scripts/capture_closing_line_archive_v2.py \
+          python -m scripts.capture_closing_line_archive_v2 \
             --policy config/closing_line_archive_policy_v1.json \
             --out-dir .data-branch \
             --status-out artifacts/closing-line-archive/status.json \

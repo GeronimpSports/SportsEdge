@@ -2,8 +2,6 @@ name: statcast-daily-refresh
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '35 12 * * *'
   push:
     paths:
       - 'sportsedge/statcast_daily_source.py'

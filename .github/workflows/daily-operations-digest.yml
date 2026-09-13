@@ -9,8 +9,6 @@ on:
       - 'config/odds_api_request_projection_v1.json'
       - 'tests/test_daily_digest.py'
       - '.github/workflows/daily-operations-digest.yml'
-  schedule:
-    - cron: '17 13 * * *'
 
 permissions:
   actions: read

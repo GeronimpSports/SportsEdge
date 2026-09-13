@@ -17,11 +17,6 @@ on:
       - 'config/dwcs*.json'
       - '.github/workflows/ufc-full-model.yml'
   workflow_dispatch:
-  schedule:
-    - cron: '0 16 * * 2'
-    - cron: '0 21 * * 2'
-    - cron: '0 15 * * 6'
-    - cron: '0 19 * * 6'
 
 permissions:
   contents: read
