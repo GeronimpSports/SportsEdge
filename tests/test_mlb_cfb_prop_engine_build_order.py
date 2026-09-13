@@ -2,6 +2,8 @@ import json
 import unittest
 from pathlib import Path
 
+from sportsedge.market_ids import canonical_market_id
+
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = json.loads((ROOT / "config/research/mlb_cfb_prop_engine_build_order_v1.json").read_text())
 
@@ -25,7 +27,11 @@ class MLBTests(unittest.TestCase):
     def test_mlb_distribution_before_market(self):
         mlb = POLICY["MLB"]
         self.assertIn("plate_appearances", mlb["stage_1_volume"])
-        self.assertIn("pitcher_strikeouts", mlb["stage_3_joint_player_distributions"])
+        canonical_stage_3 = {
+            canonical_market_id("mlb", market)
+            for market in mlb["stage_3_joint_player_distributions"]
+        }
+        self.assertIn("pitcher_strikeouts", canonical_stage_3)
         self.assertTrue(mlb["stage_7_market_binding"]["bind_only_after_model_distribution_exists"])
         self.assertFalse(mlb["stage_6_validation"]["market_prices_as_model_features"])
 
