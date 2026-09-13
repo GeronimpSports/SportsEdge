@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import unittest
+from unittest.mock import patch
 
+from sportsedge.sports.nfl.m2 import NFL_M2_FEATURE_CONTRACT, PRODUCTION_NFL_M2_MODEL_ID
 from sportsedge.sports.nfl.readiness import (
     NFLReadinessError,
     _validate_bettor_facing_odds_snapshot,
+    run_nfl_ready,
 )
+from sportsedge.sports.nfl.run_machine import NFLMachineReport
 
 
 HOME = "Chicago Bears"
 AWAY = "Green Bay Packers"
+CODE_SHA = "a" * 40
+SOURCE_SHA = "b" * 64
+NOW = datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc)
 
 
 def _event() -> dict:
@@ -52,6 +60,43 @@ def _market(event: dict, key: str) -> dict:
 
 def _validate(snapshot: dict) -> None:
     _validate_bettor_facing_odds_snapshot(snapshot, book_key="draftkings")
+
+
+def _artifact() -> dict:
+    return {"code_git_sha": CODE_SHA, "source_manifest_sha256": SOURCE_SHA}
+
+
+def _registry() -> dict:
+    return {
+        "schema_version": 9,
+        "sport": "nfl",
+        "model_id": PRODUCTION_NFL_M2_MODEL_ID,
+        "feature_contract": NFL_M2_FEATURE_CONTRACT,
+        "code_git_sha": CODE_SHA,
+        "source_manifest_sha256": SOURCE_SHA,
+        "markets": {
+            market: {"stage": "HISTORICAL_VALIDATION", "eligible": False}
+            for market in ("moneyline", "spread", "total")
+        },
+    }
+
+
+def _empty_report() -> NFLMachineReport:
+    return NFLMachineReport(
+        mode="AUTOMATIC",
+        generated_at_utc=NOW.isoformat(),
+        run_status="BLOCKED",
+        machine_version="NFL_RUN_MACHINE_V1",
+        results=(),
+        summary={"quote_count": 0, "priced": 0, "stale": 0, "blocked": 0,
+                 "official_bets": 0, "markets_seen": [], "games_seen": []},
+        model_artifact_sha256="c" * 64,
+        model_code_git_sha=CODE_SHA,
+        training_source_manifest_sha256=SOURCE_SHA,
+        live_feature_source_manifest_sha256="d" * 64,
+        live_feature_asof_ts=NOW.isoformat(),
+        quote_observed_at=NOW.isoformat(),
+    )
 
 
 class NFLBindingIntegrityTests(unittest.TestCase):
@@ -103,11 +148,39 @@ class NFLBindingIntegrityTests(unittest.TestCase):
 
     def test_duplicate_market_block_fails_closed(self):
         snapshot = _snapshot()
-        snapshot["events"][0]["bookmakers"][0]["markets"].append(
-            dict(_market(snapshot["events"][0], "totals"))
-        )
+        snapshot["events"][0]["bookmakers"][0]["markets"].append(dict(_market(snapshot["events"][0], "totals")))
         with self.assertRaisesRegex(NFLReadinessError, "NFL_BINDING_MARKET_COUNT_INVALID:totals"):
             _validate(snapshot)
+
+    def test_manual_snapshot_is_rejected_before_frozen_machine_executes(self):
+        snapshot = _snapshot()
+        _market(snapshot["events"][0], "h2h")["outcomes"].append({"name": HOME, "price": -130})
+        with patch("sportsedge.sports.nfl.readiness.run_nfl_machine") as engine:
+            with self.assertRaisesRegex(NFLReadinessError, "NFL_BINDING_OUTCOME_COUNT_INVALID:h2h"):
+                run_nfl_ready(
+                    promotion_registry=_registry(), model_artifact=_artifact(),
+                    expected_model_artifact_sha256="c" * 64,
+                    runtime_code_git_sha=CODE_SHA, now=NOW,
+                    odds_snapshot=snapshot, book_key="draftkings",
+                )
+            engine.assert_not_called()
+
+    def test_automatic_fetcher_is_wrapped_before_frozen_machine_receives_it(self):
+        bad = _snapshot()
+        _market(bad["events"][0], "totals")["outcomes"].append({"name": "Over", "point": 44.5, "price": -105})
+        with patch(
+            "sportsedge.sports.nfl.readiness.run_nfl_machine",
+            return_value=_empty_report(),
+        ) as engine:
+            run_nfl_ready(
+                promotion_registry=_registry(), model_artifact=_artifact(),
+                expected_model_artifact_sha256="c" * 64,
+                runtime_code_git_sha=CODE_SHA, now=NOW,
+                odds_fetcher=lambda: bad, book_key="draftkings",
+            )
+            wrapped = engine.call_args.kwargs["odds_fetcher"]
+            with self.assertRaisesRegex(NFLReadinessError, "NFL_BINDING_OUTCOME_COUNT_INVALID:totals"):
+                wrapped()
 
 
 if __name__ == "__main__":
