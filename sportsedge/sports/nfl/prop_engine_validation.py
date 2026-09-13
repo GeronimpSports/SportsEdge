@@ -1,15 +1,16 @@
 """PIT walk-forward diagnostics for NFL player-prop candidate engines.
 
-This validates the model-side probability distributions without pretending that
-historical sportsbook decision/close prices exist. It uses frozen, predeclared
-stat thresholds only. Therefore it can measure Brier/log-loss/calibration of
-candidate Model_P, but it cannot establish CLV, after-vig ROI, edge floors,
-market eligibility, or Truth Gate promotion.
+This validates model-side probability distributions without pretending that
+historical sportsbook decision/close prices exist. Frozen, predeclared stat
+thresholds are distribution probes only. Every held-out evaluation also requires
+actual pre-kickoff availability/role evidence, and passing markets require an
+actual pre-kickoff starting-QB confirmation. Missing or post-kickoff confirmations
+fail closed for that held-out row.
 """
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from datetime import datetime, timezone
 from math import isfinite, log
 from typing import Any, Iterable, Mapping
 
@@ -24,6 +25,9 @@ from .prop_engines import (
 
 VALIDATION_CONTRACT = "NFL_PLAYER_PROP_ENGINE_WALKFORWARD_V1"
 _EPS = 1e-12
+_PASSING_MARKETS = frozenset({
+    "PASSING_YARDS", "PASS_ATTEMPTS", "COMPLETIONS", "PASSING_TDS", "INTERCEPTIONS"
+})
 
 # Frozen diagnostic thresholds. These are model-distribution probes, not claimed
 # historical sportsbook lines and never used in fitting.
@@ -50,6 +54,45 @@ def _finite(value: Any, reason: str) -> float:
     if not isfinite(out):
         raise ValueError(reason)
     return out
+
+
+def _utc(value: Any, reason: str) -> datetime:
+    try:
+        out = value if isinstance(value, datetime) else datetime.fromisoformat(
+            str(value or "").replace("Z", "+00:00")
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(reason) from exc
+    if out.tzinfo is None or out.utcoffset() is None:
+        raise ValueError(reason)
+    return out.astimezone(timezone.utc)
+
+
+def _pre_kickoff_timestamp(row: Mapping[str, Any], field: str, kickoff: datetime) -> datetime:
+    observed = _utc(row.get(field), f"PROP_PIT_{field.upper()}_REQUIRED")
+    if observed >= kickoff:
+        raise ValueError(f"PROP_PIT_{field.upper()}_NOT_PREKICKOFF")
+    return observed
+
+
+def _pit_prediction_inputs(row: Mapping[str, Any], market: str) -> tuple[str, bool, bool | None]:
+    kickoff = _utc(row.get("kickoff_ts"), "PROP_PIT_KICKOFF_INVALID")
+    availability = str(row.get("availability_status") or "").strip().upper()
+    if availability not in {"ACTIVE", "EXPECTED_ACTIVE"}:
+        raise ValueError(f"PROP_PIT_AVAILABILITY_BLOCKED:{availability or 'MISSING'}")
+    _pre_kickoff_timestamp(row, "availability_asof_ts", kickoff)
+
+    if row.get("role_confirmed") is not True:
+        raise ValueError("PROP_PIT_ROLE_UNCONFIRMED")
+    _pre_kickoff_timestamp(row, "role_confirmed_at", kickoff)
+
+    starter: bool | None = None
+    if market in _PASSING_MARKETS:
+        if row.get("starting_qb_confirmed") is not True:
+            raise ValueError("PROP_PIT_STARTING_QB_UNCONFIRMED")
+        _pre_kickoff_timestamp(row, "starting_qb_confirmed_at", kickoff)
+        starter = True
+    return availability, True, starter
 
 
 def _clip(p: float) -> float:
@@ -153,6 +196,9 @@ def build_nfl_prop_walkforward_evidence(
                         recency_decay=recency_decay,
                     )
                     actual = _realized_value(heldout, market)
+                    availability, role_confirmed, starting_qb_confirmed = _pit_prediction_inputs(
+                        heldout, market
+                    )
                 except (PropEngineError, ValueError) as exc:
                     skipped[f"{market}:{str(exc).split(':')[0]}"] += 1
                     continue
@@ -169,11 +215,9 @@ def build_nfl_prop_walkforward_evidence(
                             model,
                             side=side,
                             line=threshold,
-                            availability_status="ACTIVE",
-                            role_confirmed=True,
-                            starting_qb_confirmed=True if market in {
-                                "PASSING_YARDS", "PASS_ATTEMPTS", "COMPLETIONS", "PASSING_TDS", "INTERCEPTIONS"
-                            } else None,
+                            availability_status=availability,
+                            role_confirmed=role_confirmed,
+                            starting_qb_confirmed=starting_qb_confirmed,
                         )
                     except PropEngineError as exc:
                         skipped[f"{market}:{str(exc).split(':')[0]}"] += 1
@@ -190,6 +234,8 @@ def build_nfl_prop_walkforward_evidence(
                         "brier": _brier(outcome, prediction.model_probability),
                         "log_loss": _log_loss(outcome, prediction.model_probability),
                         "sample_n_at_fit": model.sample_n,
+                        "pit_role_confirmed": True,
+                        "pit_starting_qb_confirmed": starting_qb_confirmed,
                     })
 
     markets: dict[str, dict[str, Any]] = {}
@@ -217,6 +263,7 @@ def build_nfl_prop_walkforward_evidence(
         "source_manifest_sha256": source_manifest_sha256,
         "evaluation_count": len(evaluations),
         "player_count": len(by_player),
+        "pit_confirmation_contract": "PREKICKOFF_AVAILABILITY_ROLE_AND_STARTING_QB_WHEN_APPLICABLE",
         "parameters": {
             "min_games": int(min_games),
             "recency_decay": float(recency_decay),
@@ -232,6 +279,5 @@ def build_nfl_prop_walkforward_evidence(
             "CLV",
             "AFTER_VIG_ROI",
             "FROZEN_EDGE_FLOORS",
-            "ROLE_AND_STARTER_PIT_CONFIRMATION_EVIDENCE",
         ],
     }

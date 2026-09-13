@@ -4,10 +4,19 @@ from sportsedge.sports.nfl.prop_engine_validation import build_nfl_prop_walkforw
 
 
 def _row(player: str, game: int, receptions: int, rec_yards: int, carries: int, rush_yards: int, td: int, attempts: int, completions: int, pass_yards: int, pass_tds: int, ints: int):
+    month = 1 + (game - 1) // 4
+    day = 1 + ((game - 1) % 4) * 7
+    date = f"2026-{month:02d}-{day:02d}"
     return {
         "player_id": player,
         "game_id": f"g{game}",
-        "kickoff_ts": f"2026-0{1 + (game - 1)//4}-{1 + ((game - 1)%4)*7:02d}T18:00:00+00:00",
+        "kickoff_ts": f"{date}T18:00:00+00:00",
+        "availability_status": "ACTIVE",
+        "availability_asof_ts": f"{date}T16:30:00+00:00",
+        "role_confirmed": True,
+        "role_confirmed_at": f"{date}T17:00:00+00:00",
+        "starting_qb_confirmed": True,
+        "starting_qb_confirmed_at": f"{date}T17:00:00+00:00",
         "receptions": receptions,
         "receiving_yards": rec_yards,
         "targets": receptions + 2,
@@ -50,6 +59,7 @@ def test_walkforward_emits_all_markets_and_remains_nonpromoting():
     assert evidence["promotion_eligible"] is False
     assert evidence["truth_gate_eligible"] is False
     assert evidence["evaluation_count"] > 0
+    assert evidence["pit_confirmation_contract"] == "PREKICKOFF_AVAILABILITY_ROLE_AND_STARTING_QB_WHEN_APPLICABLE"
     assert len(evidence["markets"]) == 11
     for payload in evidence["markets"].values():
         assert payload["promotion_eligible"] is False
@@ -67,8 +77,6 @@ def test_future_row_does_not_change_prior_walkforward_outputs():
     second = build_nfl_prop_walkforward_evidence(extended, source_manifest_sha256="b" * 64, min_games=6)
 
     for market in first["markets"]:
-        # The added future game may create new evaluations, but cannot rewrite the
-        # already-computed prefix. Aggregate n must only increase.
         assert second["markets"][market]["n"] >= first["markets"][market]["n"]
 
 
@@ -85,7 +93,42 @@ def test_calibration_metrics_are_bounded_when_present():
             assert payload["log_loss"] >= 0.0
 
 
-def test_authentic_price_evidence_stays_explicitly_missing():
+def test_missing_role_confirmation_fails_closed_for_all_heldout_rows():
+    rows = _history()
+    for row in rows:
+        row.pop("role_confirmed_at")
+    evidence = build_nfl_prop_walkforward_evidence(
+        rows, source_manifest_sha256="e" * 64, min_games=6
+    )
+    assert evidence["evaluation_count"] == 0
+    assert any("PROP_PIT_ROLE_CONFIRMED_AT_REQUIRED" in key for key in evidence["skipped"])
+
+
+def test_missing_starting_qb_confirmation_blocks_passing_only():
+    rows = _history()
+    for row in rows:
+        row.pop("starting_qb_confirmed_at")
+    evidence = build_nfl_prop_walkforward_evidence(
+        rows, source_manifest_sha256="f" * 64, min_games=6
+    )
+    assert evidence["markets"]["RECEPTIONS"]["n"] > 0
+    for market in ("PASSING_YARDS", "PASS_ATTEMPTS", "COMPLETIONS", "PASSING_TDS", "INTERCEPTIONS"):
+        assert evidence["markets"][market]["n"] == 0
+    assert any("PROP_PIT_STARTING_QB_CONFIRMED_AT_REQUIRED" in key for key in evidence["skipped"])
+
+
+def test_post_kickoff_role_confirmation_is_rejected():
+    rows = _history()
+    for row in rows:
+        row["role_confirmed_at"] = row["kickoff_ts"]
+    evidence = build_nfl_prop_walkforward_evidence(
+        rows, source_manifest_sha256="1" * 64, min_games=6
+    )
+    assert evidence["evaluation_count"] == 0
+    assert any("PROP_PIT_ROLE_CONFIRMED_AT_NOT_PREKICKOFF" in key for key in evidence["skipped"])
+
+
+def test_authentic_price_evidence_stays_explicitly_missing_but_pit_role_is_enforced():
     evidence = build_nfl_prop_walkforward_evidence(
         _history(), source_manifest_sha256="d" * 64, min_games=6
     )
@@ -94,3 +137,4 @@ def test_authentic_price_evidence_stays_explicitly_missing():
     assert "AUTHENTIC_HISTORICAL_CLOSE_PRICES" in missing
     assert "CLV" in missing
     assert "AFTER_VIG_ROI" in missing
+    assert "ROLE_AND_STARTER_PIT_CONFIRMATION_EVIDENCE" not in missing
