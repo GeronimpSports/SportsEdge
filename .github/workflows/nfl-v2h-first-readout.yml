@@ -1,5 +1,8 @@
 name: nfl-v2h-first-readout
 
+# Bootstrap note: this workflow was introduced on main before its first trusted
+# push execution. Touching the workflow on a follow-up main commit intentionally
+# starts the frozen first readout without changing model parameters or authority.
 on:
   workflow_dispatch:
   push:
