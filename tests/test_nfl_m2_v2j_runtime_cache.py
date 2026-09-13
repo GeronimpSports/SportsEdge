@@ -4,10 +4,16 @@ from unittest.mock import patch
 
 from sportsedge.sports.nfl.m2 import NFL_M2_FEATURE_CONTRACT
 from sportsedge.sports.nfl.m2_v2h_candidate import NFL_M2_V2H_EVENT_CONTRACT
-from sportsedge.sports.nfl.m2_v2j_candidate import fit_nfl_m2_v2j_candidate
+from sportsedge.sports.nfl.m2_v2j_candidate import (
+    _feature_vector as feature_vector_reference,
+    fit_nfl_m2_v2j_candidate,
+)
 from sportsedge.sports.nfl.m2_v2j_runtime_cache import market_readout_exact_cached
 from sportsedge.sports.nfl.m2_v2j_validation import _market_readout
-from sportsedge.sports.nfl.m2_v2i_candidate import _repeat_convolution as repeat_reference
+from sportsedge.sports.nfl.m2_v2i_candidate import (
+    _offense_drive_probabilities as offense_drive_reference,
+    _repeat_convolution as repeat_reference,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -128,6 +134,21 @@ class NFLV2JRuntimeCacheTests(unittest.TestCase):
             actual = market_readout_exact_cached(self.model, row)
         self.assertEqual(actual, expected)
         self.assertLess(cached_calls.call_count, reference_calls.call_count)
+
+    def test_conditioning_invariants_are_computed_once_per_direction(self):
+        row = prediction_row(-3.0, 45.0)
+        with patch(
+            "sportsedge.sports.nfl.m2_v2j_runtime_cache._feature_vector",
+            wraps=feature_vector_reference,
+        ) as feature_calls, patch(
+            "sportsedge.sports.nfl.m2_v2j_runtime_cache._offense_drive_probabilities",
+            wraps=offense_drive_reference,
+        ) as drive_calls:
+            actual = market_readout_exact_cached(self.model, row)
+        self.assertEqual(actual, _market_readout(self.model, row))
+        self.assertEqual(feature_calls.call_count, 4)
+        self.assertEqual(drive_calls.call_count, 2)
+        self.assertGreater(len(self.model.shared_environment), 1)
 
     def test_contingency_is_not_wired_into_frozen_first_readout_workflow(self):
         workflow = (ROOT / ".github/workflows/nfl-v2j-first-readout.yml").read_text(encoding="utf-8")
