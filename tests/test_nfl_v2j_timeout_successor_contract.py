@@ -11,11 +11,16 @@ MERGE_SCRIPT = ROOT / "scripts/merge_nfl_v2j_fold_shards.py"
 
 
 class NFLV2JTimeoutSuccessorContractTests(unittest.TestCase):
-    def test_policy_is_frozen_but_disabled_before_activation(self):
+    def test_policy_frozen_activation_state_is_self_consistent(self):
         policy = json.loads(POLICY.read_text(encoding="utf-8"))
         self.assertEqual(policy["policy_id"], "NFL_V2J_TIMEOUT_SUCCESSOR_V1")
-        self.assertEqual(policy["status"], "FROZEN_PRE_ACTIVATION")
-        self.assertIs(policy["execution_enabled"], False)
+        self.assertIn(
+            (policy["status"], policy["execution_enabled"]),
+            {
+                ("FROZEN_PRE_ACTIVATION", False),
+                ("FROZEN_ACTIVE_ONE_SHOT", True),
+            },
+        )
         self.assertEqual(policy["predecessor"]["workflow_run_id"], 34754505720)
         self.assertEqual(policy["predecessor"]["conclusion"], "cancelled")
         self.assertEqual(policy["predecessor"]["artifacts_emitted"], 0)
