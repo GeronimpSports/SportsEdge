@@ -1,63 +1,37 @@
 {
   "schema": "SPORTSEDGE_NFL_V2K_FEATURE_POLICY_V1",
   "status": "FROZEN_RESEARCH_ONLY",
-  "authority": {
-    "model_p": false,
-    "promotion": false,
-    "official": false
-  },
-  "training_row_fields": [
-    "game_id",
-    "kickoff_utc",
-    "offense",
-    "start_yard",
-    "outcome"
-  ],
-  "fit_features": [
-    "team_game_possession_count",
-    "drive_start_yard",
-    "drive_terminal_outcome"
-  ],
+  "authority": {"model_p": false, "promotion": false, "official": false},
+  "training_row_fields": ["game_id", "kickoff_utc", "offense", "start_yard", "outcome"],
+  "fit_features": ["team_game_possession_count", "drive_start_yard", "drive_terminal_outcome", "game_scoring_environment"],
   "field_position_contract": {
     "field": "start_yard",
     "semantic": "yards_from_offense_own_goal_line",
     "minimum": 1.0,
     "maximum": 99.0,
     "direction": "larger_is_closer_to_opponent_end_zone",
-    "raw_provider_yardline_guessing_allowed": false
+    "raw_provider_yardline_guessing_allowed": false,
+    "bins": {
+      "BACKED_UP": "1 <= start_yard < 20",
+      "OWN_TERRITORY": "20 <= start_yard < 50",
+      "PLUS_TERRITORY": "50 <= start_yard < 80",
+      "RED_ZONE": "80 <= start_yard <= 99"
+    },
+    "empty_training_bin_behavior": "USE_GLOBAL_TRAINING_ONLY_OUTCOME_PROBABILITIES"
   },
-  "allowed_drive_outcomes": [
-    "TD",
-    "FG",
-    "TURNOVER",
-    "PUNT_OTHER",
-    "SAFETY",
-    "DEF_ST_TD"
-  ],
-  "source_identity_fields": [
-    "game_id",
-    "drive",
-    "drive_id",
-    "posteam",
-    "offense",
-    "kickoff_utc"
-  ],
-  "source_value_fields": [
-    "start_yard",
-    "drive_result",
-    "result",
-    "def_st_td"
-  ],
-  "prohibited_feature_families": [
-    "sportsbook_price_or_line",
-    "betting_split_or_handle",
-    "capper_or_consensus_opinion",
-    "postgame_or_future_information",
-    "2026_forward_outcome",
-    "feature_computed_using_rows_at_or_after_prediction_cutoff"
-  ],
+  "shared_game_state_contract": {
+    "scoring_drive_classes": ["TD", "FG"],
+    "per_game_smoothed_rate": "(scoring_drives + 0.5) / (all_offensive_drives + 1.0)",
+    "transform": "logit",
+    "shared_efficiency_sd": "sample_standard_deviation_of_training_game_logits",
+    "serving_override_allowed": false
+  },
+  "allowed_drive_outcomes": ["TD", "FG", "TURNOVER", "PUNT_OTHER", "SAFETY", "DEF_ST_TD"],
+  "source_identity_fields": ["game_id", "drive", "drive_id", "posteam", "offense", "kickoff_utc"],
+  "source_value_fields": ["start_yard", "drive_result", "result", "def_st_td"],
+  "prohibited_feature_families": ["sportsbook_price_or_line", "betting_split_or_handle", "capper_or_consensus_opinion", "postgame_or_future_information", "2026_forward_outcome", "feature_computed_using_rows_at_or_after_prediction_cutoff"],
   "missing_required_feature_behavior": "BLOCK",
   "unknown_drive_result_behavior": "BLOCK",
   "train_serve_transform_contract": "IDENTICAL",
-  "notes": "Frozen before the first untouched V2K evaluation. start_yard must be normalized upstream to the declared coordinate; ambiguous provider-native yard-line fields are not accepted as model inputs. Additional raw columns may be physically present but are not model inputs unless a new preregistered candidate policy explicitly adds them."
+  "notes": "Frozen before the first untouched V2K evaluation. Field-position-conditioned drive outcomes and shared game-state dispersion are estimated only from PIT-safe training rows. Additional raw columns may be physically present but are not model inputs unless a new preregistered candidate policy explicitly adds them."
 }
