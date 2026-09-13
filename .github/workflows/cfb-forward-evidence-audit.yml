@@ -8,8 +8,9 @@ on:
         required: false
         default: false
         type: boolean
-  schedule:
-    - cron: '18,48 * * * *'
+  workflow_run:
+    workflows: ['closing-line-archive', 'cfb-forward-weather-evidence']
+    types: [completed]
 
 permissions:
   contents: read
