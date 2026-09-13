@@ -1,7 +1,7 @@
 """Hash-bound Stage 6 validation provenance for research prop engines.
 
-This module wraps the existing metric gate with evidence identity.  It does not
-create Model_P or production authority.  Predictions, PIT records, and realized
+This module wraps the existing metric gate with evidence identity. It does not
+create Model_P or production authority. Predictions, PIT records, and realized
 outcomes remain separate inputs until this layer binds them deterministically.
 """
 from __future__ import annotations
@@ -57,6 +57,20 @@ def _metric_number(value:float)->float|None:
     return float(value) if isfinite(float(value)) else None
 
 
+def _positive_int(value:object,name:str)->int:
+    if isinstance(value,bool) or not isinstance(value,int) or value<=0:
+        raise ValueError(f"BOUND_VALIDATION_THRESHOLD_INVALID:{name}")
+    return value
+
+
+def _finite_float(value:object,name:str)->float:
+    if isinstance(value,bool) or not isinstance(value,(int,float)):
+        raise ValueError(f"BOUND_VALIDATION_THRESHOLD_INVALID:{name}")
+    out=float(value)
+    if not isfinite(out):raise ValueError(f"BOUND_VALIDATION_THRESHOLD_INVALID:{name}")
+    return out
+
+
 def validation_attestation_sha256(attestation:Mapping[str,Any])->str:
     payload=dict(attestation)
     payload.pop("artifact_sha256",None)
@@ -71,7 +85,7 @@ def verify_validation_attestation(attestation:Mapping[str,Any])->dict[str,Any]:
     expected=_hex(payload.get("artifact_sha256"),64,"artifact_sha256")
     actual=validation_attestation_sha256(payload)
     if actual!=expected:raise ValueError("VALIDATION_ATTESTATION_HASH_MISMATCH")
-    if payload.get("passed") is not isinstance(payload.get("passed"),bool):
+    if not isinstance(payload.get("passed"),bool):
         raise ValueError("VALIDATION_ATTESTATION_PASS_FLAG_INVALID")
     if payload.get("status") != ("PASS" if payload["passed"] else "FAIL"):
         raise ValueError("VALIDATION_ATTESTATION_STATUS_CONTRADICTION")
@@ -215,14 +229,22 @@ def build_bound_validation_attestation(
     extras=set(outcome_by_id)-seen_prediction_ids
     if extras:raise ValueError("BOUND_VALIDATION_ORPHAN_OUTCOMES:"+",".join(sorted(extras)))
 
-    # Fold training cutoffs may only move forward as held-out chronology advances.
     cutoff_sequence=[_dt(fold_contracts[fold]["train_cutoff_ts"],"fold_train_cutoff_ts") for fold in seen_fold_order]
     if cutoff_sequence!=sorted(cutoff_sequence):raise ValueError("BOUND_VALIDATION_FOLD_CUTOFF_REVERSED")
 
     thresholds={
-        "min_n":int(min_n),"ece_max":float(ece_max),"max_bin_deviation_max":float(max_bin_deviation_max),
-        "slope_min":float(slope_min),"slope_max":float(slope_max),"intercept_abs_max":float(intercept_abs_max),
+        "min_n":_positive_int(min_n,"min_n"),
+        "ece_max":_finite_float(ece_max,"ece_max"),
+        "max_bin_deviation_max":_finite_float(max_bin_deviation_max,"max_bin_deviation_max"),
+        "slope_min":_finite_float(slope_min,"slope_min"),
+        "slope_max":_finite_float(slope_max,"slope_max"),
+        "intercept_abs_max":_finite_float(intercept_abs_max,"intercept_abs_max"),
     }
+    if thresholds["ece_max"]<0 or thresholds["max_bin_deviation_max"]<0 or thresholds["intercept_abs_max"]<0:
+        raise ValueError("BOUND_VALIDATION_THRESHOLD_NEGATIVE")
+    if thresholds["slope_min"]>thresholds["slope_max"]:
+        raise ValueError("BOUND_VALIDATION_SLOPE_RANGE_INVALID")
+
     result=validate_probability_rows(metric_rows,**thresholds)
     metrics={
         "n":result.n,"brier":result.brier,"log_loss":result.log_loss,
