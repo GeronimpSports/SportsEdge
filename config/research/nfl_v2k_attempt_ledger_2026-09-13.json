@@ -1,0 +1,43 @@
+{
+  "schema_version": "SPORTSEDGE_NFL_V2K_ATTEMPT_LEDGER_V1",
+  "candidate_id": "nfl_v2k_hierarchical_joint_drive_candidate",
+  "status": "OPEN_PREREGISTERED_NO_FITTED_READOUT",
+  "evidence_inheritance": false,
+  "preregistration_commit_sha": "9eebfb8444443d18c9620d1e5d8d304b2fe6ea6c",
+  "attempt_budget": {
+    "statistical_first_readout_allowed": 1,
+    "statistical_first_readout_consumed": 0,
+    "post_readout_retunes_allowed": 0,
+    "post_readout_architecture_mutations_allowed": 0
+  },
+  "pre_readout_engineering_findings": [
+    {
+      "finding": "Uploaded joint_distribution prototype imports drive_model while uploaded artifact filename is drive_model(1).py.",
+      "classification": "PACKAGING_ONLY",
+      "resolution_policy": "Normalize module names in repository integration."
+    },
+    {
+      "finding": "Uploaded drive prototype simulates all sampled regulation drives and then appends an endgame scoring event based on the post-drive margin, creating a phantom possession.",
+      "classification": "IMPLEMENTATION_DOES_NOT_MATCH_INTENDED_ARCHITECTURE",
+      "resolution_policy": "Simulate the actual final scheduled regulation possession conditionally from its pre-drive state; no extra possession."
+    },
+    {
+      "finding": "Uploaded MC precision check compares margin-point standard error to a probability-like edge threshold.",
+      "classification": "DIMENSIONAL_GATE_BUG",
+      "resolution_policy": "Replace with event-specific Bernoulli probability standard errors and frozen fail-closed threshold."
+    }
+  ],
+  "historical_fitted_outputs_seen_before_preregistration": false,
+  "historical_key_number_table_seen_before_preregistration": false,
+  "promotion_authority": false,
+  "pricing_enabled": false,
+  "official_card_eligible": false,
+  "entries": [
+    {
+      "sequence": 1,
+      "timestamp_date": "2026-09-13",
+      "event": "PREREGISTRATION_FROZEN",
+      "result": "V2K architecture, boundaries, attempt budget, leakage rules, and gates committed before any real historical V2K fit/readout."
+    }
+  ]
+}
