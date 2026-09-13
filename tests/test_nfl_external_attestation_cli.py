@@ -39,7 +39,13 @@ class NFLExternalAttestationCLITests(unittest.TestCase):
                    "source_manifest_sha256": "a" * 64, "code_git_sha": self.SHA,
                    "model_id": PRODUCTION_NFL_M2_MODEL_ID, "feature_contract": NFL_M2_FEATURE_CONTRACT,
                    "promotion_evidence": {"spread": {"fold_wins": 7, "fold_total": 10,
-                   "calibration": {"pass": True, "max_bin_deviation": .03, "threshold": .05}}}}
+                   "calibration": {"pass": True, "max_bin_deviation": .03, "threshold": .05,
+                                   "n": 200, "bins": [
+                                       {"n": 50, "mean_probability": 0.20, "empirical_rate": 0.20},
+                                       {"n": 50, "mean_probability": 0.40, "empirical_rate": 0.40},
+                                       {"n": 50, "mean_probability": 0.60, "empirical_rate": 0.60},
+                                       {"n": 50, "mean_probability": 0.80, "empirical_rate": 0.80},
+                                   ]}}}}
         registry = {"source_sha256": "a" * 64, "source_manifest_sha256": "a" * 64,
                     "model_id": PRODUCTION_NFL_M2_MODEL_ID, "feature_contract": NFL_M2_FEATURE_CONTRACT,
                     "ci_attestation_state": "UNATTESTED_IN_RUNNING_WORKFLOW"}
