@@ -53,9 +53,10 @@ class FootballPropRuntimeTruthTests(unittest.TestCase):
         )
         self.assertEqual(floor.schema_version, 3)
         self.assertEqual(floor.sport, "nfl")
-        self.assertEqual(str(floor.value_probability_points), "0.05")
-        self.assertEqual(floor.provenance_status, "PREREGISTERED_PRECOLLECTION")
+        self.assertEqual(str(floor.value_probability_points), "0.03")
+        self.assertEqual(floor.provenance_status, "FROZEN_BEFORE_JUDGED_STREAM")
         self.assertEqual(floor.evidence_sha256, "")
+        self.assertEqual(floor.frozen_by_commit, "")
 
     def test_mlb_market_id_collisions_resolve_to_one_canonical_id(self):
         pairs = {
