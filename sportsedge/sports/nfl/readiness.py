@@ -155,7 +155,12 @@ def _normalized_outcome_names(outcomes: list[Mapping[str, Any]], market_key: str
     return [str(row.get("name") or "").strip() for row in outcomes]
 
 
-def _structural_event_guard(event: Mapping[str, Any], *, clean_book: str) -> Mapping[str, Any] | None:
+def _structural_event_guard(
+    event: Mapping[str, Any],
+    *,
+    clean_book: str,
+    check_outcome_duplicates: bool = True,
+) -> Mapping[str, Any] | None:
     event_home = str(event.get("home_team") or "").strip()
     event_away = str(event.get("away_team") or "").strip()
     if not event_home or not event_away or event_home == event_away:
@@ -194,7 +199,7 @@ def _structural_event_guard(event: Mapping[str, Any], *, clean_book: str) -> Map
         names = _normalized_outcome_names(outcomes, market_key)
         if any(not name for name in names):
             raise NFLReadinessError(f"NFL_BINDING_OUTCOME_NAME_MISSING:{market_key}")
-        if len(set(names)) != len(names):
+        if check_outcome_duplicates and len(set(names)) != len(names):
             raise NFLReadinessError(f"NFL_BINDING_OUTCOME_DUPLICATE:{market_key}")
     return book
 
@@ -202,7 +207,11 @@ def _structural_event_guard(event: Mapping[str, Any], *, clean_book: str) -> Map
 def _strict_event_guard(event: Mapping[str, Any], *, clean_book: str) -> None:
     event_home = str(event.get("home_team") or "").strip()
     event_away = str(event.get("away_team") or "").strip()
-    book = _structural_event_guard(event, clean_book=clean_book)
+    book = _structural_event_guard(
+        event,
+        clean_book=clean_book,
+        check_outcome_duplicates=False,
+    )
     if book is None:
         raise NFLReadinessError(f"NFL_BINDING_BOOKMAKER_COUNT_INVALID:{clean_book}")
     markets = book.get("markets")
@@ -272,9 +281,8 @@ def _validate_bettor_facing_odds_snapshot(
             _strict_event_guard(event, clean_book=clean_book)
         return payload
 
-    for event in event_rows:
-        _structural_event_guard(event, clean_book=clean_book)
-
+    required_matches: list[tuple[str, Mapping[str, Any]]] = []
+    matched_event_indexes: set[int] = set()
     for game in required_games:
         game_id = str(game.get("game_id") or "").strip()
         home = str(game.get("home") or "").strip()
@@ -282,8 +290,8 @@ def _validate_bettor_facing_odds_snapshot(
         start = game.get("start")
         if not game_id or not home or not away or not isinstance(start, datetime):
             raise NFLReadinessError("NFL_BINDING_REQUIRED_GAME_INVALID")
-        matches: list[Mapping[str, Any]] = []
-        for event in event_rows:
+        matches: list[tuple[int, Mapping[str, Any]]] = []
+        for index, event in enumerate(event_rows):
             if str(event.get("home_team") or "").strip() != home:
                 continue
             if str(event.get("away_team") or "").strip() != away:
@@ -292,14 +300,24 @@ def _validate_bettor_facing_odds_snapshot(
                 event.get("commence_time"), f"NFL_BINDING_EVENT_START_INVALID:{game_id}"
             )
             if event_start == start:
-                matches.append(event)
+                matches.append((index, event))
         if not matches:
             raise NFLReadinessError(f"NFL_BINDING_MODELED_EVENT_NOT_FOUND:{game_id}")
         if len(matches) != 1:
             raise NFLReadinessError(f"NFL_BINDING_MODELED_EVENT_AMBIGUOUS:{game_id}")
-        event = matches[0]
+        event_index, event = matches[0]
         if not str(event.get("id") or "").strip():
             raise NFLReadinessError(f"NFL_BINDING_MODELED_EVENT_ID_MISSING:{game_id}")
+        if event_index in matched_event_indexes:
+            raise NFLReadinessError(f"NFL_BINDING_MODELED_EVENT_AMBIGUOUS:{game_id}")
+        matched_event_indexes.add(event_index)
+        required_matches.append((game_id, event))
+
+    for index, event in enumerate(event_rows):
+        if index not in matched_event_indexes:
+            _structural_event_guard(event, clean_book=clean_book)
+
+    for _game_id, event in required_matches:
         _strict_event_guard(event, clean_book=clean_book)
     return payload
 
@@ -342,14 +360,17 @@ def run_nfl_ready(
     if supplied_odds is not None:
         if feature_state["required_games"] is not None:
             _validate_bettor_facing_odds_snapshot(
-                supplied_odds, book_key=book_key,
+                supplied_odds,
+                book_key=book_key,
                 required_games=feature_state["required_games"],
             )
         elif original_builder is not None:
             # Structural corruption fails immediately, but modeled-event
             # completeness waits for the feature builder to reveal the slate.
             _validate_bettor_facing_odds_snapshot(
-                supplied_odds, book_key=book_key, required_games=[]
+                supplied_odds,
+                book_key=book_key,
+                required_games=[],
             )
         else:
             _validate_bettor_facing_odds_snapshot(supplied_odds, book_key=book_key)
@@ -366,7 +387,9 @@ def run_nfl_ready(
             feature_state["required_games"] = required
             if supplied_odds is not None:
                 _validate_bettor_facing_odds_snapshot(
-                    supplied_odds, book_key=book_key, required_games=required
+                    supplied_odds,
+                    book_key=book_key,
+                    required_games=required,
                 )
             return built
 
@@ -384,7 +407,9 @@ def run_nfl_ready(
             if required is None and original_builder is not None:
                 raise NFLReadinessError("NFL_BINDING_REQUIRED_GAMES_UNAVAILABLE_BEFORE_ODDS")
             _validate_bettor_facing_odds_snapshot(
-                fetched, book_key=book_key, required_games=required
+                fetched,
+                book_key=book_key,
+                required_games=required,
             )
             return fetched
 
