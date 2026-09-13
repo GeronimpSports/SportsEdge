@@ -1,0 +1,46 @@
+{
+  "schema": "SPORTSEDGE_NFL_V2L_FEATURE_POLICY_V1",
+  "status": "FROZEN_RESEARCH_ONLY",
+  "candidate": "NFL_V2L_MATCHUP_SPECIFIC_DRIVE_V1",
+  "inherits": "NFL_V2K_FOOTBALL_NATIVE_DRIVE_V1",
+  "authority": {"model_p": false, "promotion": false, "official": false},
+  "training_row_fields": ["game_id", "kickoff_utc", "offense", "defense", "start_yard", "outcome"],
+  "fit_features": [
+    "team_game_possession_count",
+    "drive_start_yard",
+    "drive_terminal_outcome",
+    "game_scoring_environment",
+    "offense_scoring_rate_strength",
+    "defense_scoring_rate_strength",
+    "offense_drive_rate_strength",
+    "defense_drive_rate_strength"
+  ],
+  "strength_estimation": {
+    "data_scope": "PIT_SAFE_TRAINING_ROWS_ONLY",
+    "sportsbook_inputs_allowed": false,
+    "future_rows_allowed": false,
+    "shrinkage": "EMPIRICAL_BAYES_TOWARD_LEAGUE_MEAN",
+    "minimum_team_drives_before_unshrunk_use": 200,
+    "unseen_team_behavior": "LEAGUE_MEAN",
+    "matchup_composition": "LOGIT_OFFENSE_PLUS_DEFENSE_CENTERED_ON_LEAGUE_MEAN"
+  },
+  "serving_contract": {
+    "requires_home_offense": true,
+    "requires_home_defense": true,
+    "requires_away_offense": true,
+    "requires_away_defense": true,
+    "home_and_away_parameters_must_be_distinctly_resolved": true,
+    "global_only_serving_allowed": false
+  },
+  "prohibited_feature_families": [
+    "sportsbook_price_or_line",
+    "betting_split_or_handle",
+    "capper_or_consensus_opinion",
+    "postgame_or_future_information",
+    "2026_forward_outcome",
+    "feature_computed_using_rows_at_or_after_prediction_cutoff"
+  ],
+  "missing_required_feature_behavior": "BLOCK",
+  "train_serve_transform_contract": "IDENTICAL",
+  "notes": "New candidate identity created because V2K's frozen policy did not permit adding matchup-specific offense/defense inputs after preregistration. V2K remains unchanged and its untouched evidence unspent."
+}
