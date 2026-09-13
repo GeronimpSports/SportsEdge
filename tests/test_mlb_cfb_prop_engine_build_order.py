@@ -25,7 +25,7 @@ class MLBTests(unittest.TestCase):
     def test_mlb_distribution_before_market(self):
         mlb = POLICY["MLB"]
         self.assertIn("plate_appearances", mlb["stage_1_volume"])
-        self.assertIn("pitcher_strikeouts", mlb["stage_3_joint_player_distributions"])
+        self.assertIn("strikeouts_pitcher", mlb["stage_3_joint_player_distributions"])
         self.assertTrue(mlb["stage_7_market_binding"]["bind_only_after_model_distribution_exists"])
         self.assertFalse(mlb["stage_6_validation"]["market_prices_as_model_features"])
 
