@@ -3,6 +3,7 @@ from sportsedge.props_joint_stage3 import football_joint, mlb_joint
 from sportsedge.props_event_stage4 import football_td, mlb_hr
 from sportsedge.props_pit_stage5 import validate_pit_inputs
 from sportsedge.props_validation_stage6 import validate_probability_rows
+from sportsedge.props_market_binding_stage7 import bind_prop_market, NO_VIG_ONE_SIDED
 
 class PropsSweepTests(unittest.TestCase):
  def test_joint_deterministic_and_coherent(self):
@@ -25,5 +26,14 @@ class PropsSweepTests(unittest.TestCase):
  def test_validation_chronological(self):
   rows=[{"event_start_ts":f"2026-01-{i:02d}T00:00:00+00:00","model_probability":.5,"outcome":i%2} for i in range(1,10)]
   r=validate_probability_rows(rows,min_n=5,ece_max=.6,max_bin_deviation_max=.6);self.assertTrue(r.passed);self.assertEqual(r.authority,"RESEARCH_ONLY")
+ def test_stage7_blocks_unvalidated_model(self):
+  with self.assertRaisesRegex(ValueError,"BLOCKED_NO_VALIDATED_PROBABILITY_ENGINE"):
+   bind_prop_market(sport="NFL",market="ANYTIME_TD",entity_id="x",model_probability=.62,offered_odds=-150,validation_passed=False)
+ def test_one_sided_ev_without_invented_no_vig(self):
+  b=bind_prop_market(sport="NFL",market="ANYTIME_TD",entity_id="x",model_probability=.62,offered_odds=-150,validation_passed=True)
+  self.assertEqual(b.market_no_vig_probability,NO_VIG_ONE_SIDED);self.assertGreater(b.expected_value_per_unit,0);self.assertFalse(b.official);self.assertFalse(b.staking_authority)
+ def test_two_sided_devig_only_after_model_exists(self):
+  b=bind_prop_market(sport="MLB",market="PITCHER_STRIKEOUTS",entity_id="p",model_probability=.58,offered_odds=-110,paired_other_side_odds=-110,validation_passed=True,line=5.5)
+  self.assertAlmostEqual(b.market_no_vig_probability,.5,places=9)
 
 if __name__=="__main__":unittest.main()
