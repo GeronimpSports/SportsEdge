@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from sportsedge.football_prop_surface import load_prop_surface, require_executable_prop_surface
+from sportsedge.run_it_card import bettor_card_rows
 
 
 def _stamp(path: Path):
@@ -36,7 +37,7 @@ def _blocked_row(lane: str, reason: str) -> list[dict]:
 def _load(path: Path, lane: str, code: int, previous_stamp) -> tuple[list[dict], dict]:
     """Consume only output proven to have been produced by this child invocation.
 
-    A previous RUN IT card may exist on disk.  If the current child process fails
+    A previous RUN IT card may exist on disk. If the current child process fails
     before replacing it, that old card must never be re-used as current Model_P.
     Non-zero child exits are also fail-closed even when the child managed to write
     a JSON payload; only its blocker text is retained.
@@ -82,8 +83,8 @@ def _load(path: Path, lane: str, code: int, previous_stamp) -> tuple[list[dict],
 def _prop_lane_state(sport: str) -> tuple[bool, str | None]:
     """Resolve whether this sport has an executable prop engine.
 
-    A frozen artifact or registry is not enough.  The authoritative engine surface
-    must explicitly declare IMPLEMENTED_FAIL_CLOSED.  NO_ENGINE is a valid runtime
+    A frozen artifact or registry is not enough. The authoritative engine surface
+    must explicitly declare IMPLEMENTED_FAIL_CLOSED. NO_ENGINE is a valid runtime
     state and produces a visible blocked lane rather than aborting the game lane.
     """
     path = ROOT / "config/football_prop_engine_surface.json"
@@ -143,6 +144,7 @@ def main() -> int:
         prop_status = "NO_ENGINE"
 
     rows = game_rows + prop_rows
+    bettor_card = bettor_card_rows(rows)
     if game.returncode != 0:
         status = "BLOCKED"
     elif prop_executable and prop_exit_code == 0:
@@ -157,6 +159,7 @@ def main() -> int:
         "report": {
             "run_status": status,
             "results": rows,
+            "bettor_card": bettor_card,
             "lane_status": {
                 "GAME": game_payload.get("status", "BLOCKED"),
                 "PLAYER_PROPS": prop_status,
@@ -174,11 +177,19 @@ def main() -> int:
             "prop_failures_are_not_silently_skipped": True,
             "no_engine_prop_lane_is_not_executed": not prop_executable,
             "stale_child_output_reuse_prohibited": True,
+            "diagnostic_results_are_not_bettor_card": True,
+            "bettor_card_requires_official_bet": True,
+            "predictive_rejection_suppressed": True,
         },
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"status": status, "sport": sport, "output": str(args.output)}, sort_keys=True))
+    print(json.dumps({
+        "status": status,
+        "sport": sport,
+        "bettor_card_count": len(bettor_card),
+        "output": str(args.output),
+    }, sort_keys=True))
     return 2 if status == "BLOCKED" else 0
 
 
