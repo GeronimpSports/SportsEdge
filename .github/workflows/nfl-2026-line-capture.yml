@@ -8,6 +8,12 @@ on:
         type: choice
         options: [check, capture]
         default: check
+  pull_request:
+    paths:
+      - 'scripts/audit_nfl_2026_capture_gaps.py'
+      - 'tests/test_nfl_2026_capture_gap_audit.py'
+      - 'config/nfl_2026_capture.json'
+      - '.github/workflows/nfl-2026-line-capture.yml'
   # Frozen confirmation evidence is independent of the forward-CLV collector.
   # Ten-minute polling is gated against the free nflverse schedule before the
   # paid DraftKings capture path runs, so the 30..15 minute FINAL window gets a
