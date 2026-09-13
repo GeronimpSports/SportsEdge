@@ -2,8 +2,6 @@ name: nfl-v2g-forward-clv
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '7,17,27,37,47,57 * * * *'
   pull_request:
     paths:
       - 'config/research/nfl_v2g_forward_clv_policy_2026-09-12.json'
