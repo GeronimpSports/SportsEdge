@@ -1,4 +1,5 @@
 name: nfl-v2i-first-readout
+# Bootstrap-only touch; workflow was introduced on the prior main commit.
 
 on:
   workflow_dispatch:
