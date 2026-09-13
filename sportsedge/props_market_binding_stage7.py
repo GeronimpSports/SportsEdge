@@ -1,12 +1,16 @@
 """Stage 7 prop market binding.
 
 This adapter can price a posted market only after an independently validated
-probability exists. It never creates Model_P from sportsbook prices.
+probability exists. It never creates Model_P from sportsbook prices. The legacy
+boolean entrypoint remains research-only; the provenance entrypoint requires a
+hash-verified Stage 6 validation attestation.
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import isfinite
-from typing import Optional
+from typing import Mapping, Optional
+
+from sportsedge.props_validation_provenance_stage6 import verify_validation_attestation
 
 STATUS_RESEARCH="RESEARCH_ONLY_POST_VALIDATION_BINDING"
 NO_VIG_ONE_SIDED="UNAVAILABLE_ONE_SIDED"
@@ -50,9 +54,16 @@ class BoundProp:
     sport:str; market:str; entity_id:str; line:Optional[float]; model_probability:float
     fair_american_odds:int; offered_odds:int; decimal_odds:float; expected_value_per_unit:float
     market_no_vig_probability:float|str; validation_passed:bool
+    validation_artifact_sha256:str|None=None; validation_model_id:str|None=None; validation_model_version:str|None=None
     status:str=STATUS_RESEARCH; official:bool=False; staking_authority:bool=False
 
 def bind_prop_market(*,sport:str,market:str,entity_id:str,model_probability:float,offered_odds:int,validation_passed:bool,line:float|None=None,paired_other_side_odds:int|None=None)->BoundProp:
+    """Legacy research binding utility.
+
+    A literal True still means only that the caller asserts validation. It grants
+    no production authority and deliberately carries no validation artifact hash.
+    New evidence-bearing consumers should use `bind_prop_market_with_attestation`.
+    """
     if validation_passed is not True:raise ValueError("BLOCKED_NO_VALIDATED_PROBABILITY_ENGINE")
     try:p=float(model_probability)
     except (TypeError,ValueError) as exc:raise ValueError("BAD_MODEL_PROBABILITY") from exc
@@ -63,3 +74,23 @@ def bind_prop_market(*,sport:str,market:str,entity_id:str,model_probability:floa
     dec=american_to_decimal(offered); ev=p*(dec-1.0)-(1.0-p)
     nv:float|str=NO_VIG_ONE_SIDED if paired is None else proportional_devig(offered,paired)[0]
     return BoundProp(sport,market,entity_id,bound_line,p,probability_to_fair_american(p),offered,dec,ev,nv,True)
+
+def bind_prop_market_with_attestation(*,sport:str,market:str,entity_id:str,model_probability:float,offered_odds:int,validation_attestation:Mapping[str,object],model_id:str,model_version:str,code_git_sha:str,line:float|None=None,paired_other_side_odds:int|None=None)->BoundProp:
+    """Bind a market only after verifying the Stage 6 validation artifact identity."""
+    attestation=verify_validation_attestation(validation_attestation)
+    if attestation["passed"] is not True:raise ValueError("BLOCKED_VALIDATION_ATTESTATION_NOT_PASS")
+    if str(attestation.get("sport"))!=str(sport).upper():raise ValueError("VALIDATION_ATTESTATION_SPORT_MISMATCH")
+    if str(attestation.get("model_id"))!=str(model_id):raise ValueError("VALIDATION_ATTESTATION_MODEL_ID_MISMATCH")
+    if str(attestation.get("model_version"))!=str(model_version):raise ValueError("VALIDATION_ATTESTATION_MODEL_VERSION_MISMATCH")
+    if str(attestation.get("code_git_sha"))!=str(code_git_sha).lower():raise ValueError("VALIDATION_ATTESTATION_CODE_SHA_MISMATCH")
+    bound=bind_prop_market(
+        sport=sport,market=market,entity_id=entity_id,model_probability=model_probability,
+        offered_odds=offered_odds,validation_passed=True,line=line,
+        paired_other_side_odds=paired_other_side_odds,
+    )
+    return replace(
+        bound,
+        validation_artifact_sha256=str(attestation["artifact_sha256"]),
+        validation_model_id=str(attestation["model_id"]),
+        validation_model_version=str(attestation["model_version"]),
+    )
