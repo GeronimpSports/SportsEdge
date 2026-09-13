@@ -23,7 +23,7 @@ def _dt(value: str) -> datetime:
     if d.tzinfo is None: raise ValueError("timestamp must be timezone-aware")
     return d.astimezone(timezone.utc)
 
-def fit_pit(rows: Iterable[DriveRow], *, prediction_cutoff_utc: str, source_manifest_sha256: str, code_sha: str) -> dict:
+def fit_pit(rows: Iterable[DriveRow], *, prediction_cutoff_utc: str, source_manifest_sha256: str, feature_policy_sha256: str, code_sha: str) -> dict:
     cutoff = _dt(prediction_cutoff_utc); accepted=[]
     taxonomy={x.value for x in DriveOutcome}
     for r in rows:
@@ -33,7 +33,9 @@ def fit_pit(rows: Iterable[DriveRow], *, prediction_cutoff_utc: str, source_mani
         if not 1.0 <= float(r.start_yard) <= 99.0: raise ValueError("invalid starting field position")
         accepted.append(r)
     if not accepted: raise ValueError("no PIT-safe training rows")
-    if len(source_manifest_sha256)!=64 or len(code_sha)<7: raise ValueError("missing immutable source/code identity")
+    if len(source_manifest_sha256)!=64: raise ValueError("missing immutable source manifest identity")
+    if len(feature_policy_sha256)!=64: raise ValueError("missing immutable feature policy identity")
+    if len(code_sha)<7: raise ValueError("missing immutable code identity")
     counts={x.value:0 for x in DriveOutcome}; starts=[]; possessions={}
     for r in accepted:
         counts[r.outcome]+=1; starts.append(float(r.start_yard))
@@ -42,12 +44,13 @@ def fit_pit(rows: Iterable[DriveRow], *, prediction_cutoff_utc: str, source_mani
     var_start=sum((x-mean_start)**2 for x in starts)/max(1,n-1)
     drive_counts=list(possessions.values()); mean_drives=sum(drive_counts)/len(drive_counts)
     var_drives=sum((x-mean_drives)**2 for x in drive_counts)/max(1,len(drive_counts)-1)
-    fit={"schema":FIT_SCHEMA,"prediction_cutoff_utc":cutoff.isoformat(),"source_manifest_sha256":source_manifest_sha256,"code_sha":code_sha,"training_rows":n,"training_team_games":len(possessions),"params":{"drives_mean":mean_drives,"drives_sd":var_drives**0.5,"start_yard_mean":mean_start,"start_yard_sd":var_start**0.5,"outcome_probs":{k:counts[k]/n for k in counts}},"model_p_authority":False,"promotion_authority":False,"official_authority":False}
+    fit={"schema":FIT_SCHEMA,"prediction_cutoff_utc":cutoff.isoformat(),"source_manifest_sha256":source_manifest_sha256,"feature_policy_sha256":feature_policy_sha256,"code_sha":code_sha,"training_rows":n,"training_team_games":len(possessions),"params":{"drives_mean":mean_drives,"drives_sd":var_drives**0.5,"start_yard_mean":mean_start,"start_yard_sd":var_start**0.5,"outcome_probs":{k:counts[k]/n for k in counts}},"model_p_authority":False,"promotion_authority":False,"official_authority":False}
     canonical=json.dumps(fit,sort_keys=True,separators=(",",":")).encode(); fit["fit_sha256"]=hashlib.sha256(canonical).hexdigest(); return fit
 
-def params_from_fit(fit: Mapping, *, expected_source_manifest_sha256: str, expected_code_sha: str, shared_efficiency_sd: float=0.0) -> V2KParams:
+def params_from_fit(fit: Mapping, *, expected_source_manifest_sha256: str, expected_feature_policy_sha256: str, expected_code_sha: str, shared_efficiency_sd: float=0.0) -> V2KParams:
     if fit.get("schema")!=FIT_SCHEMA: raise ValueError("fit schema mismatch")
     if fit.get("source_manifest_sha256")!=expected_source_manifest_sha256: raise ValueError("train/serve source manifest mismatch")
+    if fit.get("feature_policy_sha256")!=expected_feature_policy_sha256: raise ValueError("train/serve feature policy mismatch")
     if fit.get("code_sha")!=expected_code_sha: raise ValueError("train/serve code SHA mismatch")
     if any(bool(fit.get(k)) for k in ("model_p_authority","promotion_authority","official_authority")): raise ValueError("research fit cannot carry bettor-facing authority")
     p=fit["params"]
