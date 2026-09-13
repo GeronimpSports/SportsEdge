@@ -231,7 +231,7 @@ def _infer_v3_sport(market: str, floors: Mapping[str, Any]) -> str:
         except MarketIdError:
             continue
         if any(alias in sport_floors for alias in aliases):
-            matches.append(candidate_sport)
+            matches.append(candidate_sport.lower())
     if len(matches) != 1:
         reason = "AMBIGUOUS" if matches else "UNKNOWN"
         raise EdgeFloorError(f"EDGE_FLOOR_SPORT_{reason}:{market}")
@@ -243,7 +243,14 @@ def _require_v3_floor(market: str, sport: str | None, truth_gate: Mapping[str, A
     if not isinstance(floors, Mapping):
         raise EdgeFloorError("missing truth_gate.edge_floors config")
     resolved_sport = sport.strip().lower() if isinstance(sport, str) and sport.strip() else _infer_v3_sport(market, floors)
-    sport_floors = floors.get(resolved_sport)
+    sport_floors = next(
+        (
+            value
+            for key, value in floors.items()
+            if isinstance(key, str) and key.lower() == resolved_sport
+        ),
+        None,
+    )
     if not isinstance(sport_floors, Mapping):
         raise EdgeFloorError(f"ELIGIBLE_SPORT_MISSING_EDGE_FLOORS:{resolved_sport}")
 
