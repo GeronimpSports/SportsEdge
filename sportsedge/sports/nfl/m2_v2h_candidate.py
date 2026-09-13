@@ -107,7 +107,6 @@ def build_nfl_v2h_game_event_rows(
     schedule_rows: Iterable[Mapping[str, Any]],
     pbp_rows: Iterable[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Collapse PBP into explicit football scoring-sequence counts per game/team."""
     schedule: dict[str, dict[str, Any]] = {}
     for raw in schedule_rows:
         row = dict(raw)
@@ -130,7 +129,8 @@ def build_nfl_v2h_game_event_rows(
         game = schedule.get(game_id)
         if game is None:
             continue
-        home = str(game["home_team"]); away = str(game["away_team"])
+        home = str(game["home_team"])
+        away = str(game["away_team"])
         posteam = str(row.get("posteam") or "").strip()
         drive = str(row.get("drive") or "").strip()
         if posteam not in {home, away}:
@@ -159,8 +159,13 @@ def build_nfl_v2h_game_event_rows(
     aggregates: dict[tuple[str, str], dict[str, int]] = {}
     for (game_id, team, _drive), state in drives.items():
         agg = aggregates.setdefault((game_id, team), {
-            "drives": 0, "td_xp_good": 0, "td_xp_miss": 0,
-            "td_two_good": 0, "td_two_fail": 0, "field_goals": 0, "other_no_score": 0,
+            "drives": 0,
+            "td_xp_good": 0,
+            "td_xp_miss": 0,
+            "td_two_good": 0,
+            "td_two_fail": 0,
+            "field_goals": 0,
+            "other_no_score": 0,
         })
         agg["drives"] += 1
         if state["touchdown"]:
@@ -171,8 +176,6 @@ def build_nfl_v2h_game_event_rows(
             elif state["xp"] == "miss":
                 agg["td_xp_miss"] += 1
             else:
-                # Missing/blank explicit conversion data is kept as the dominant
-                # historical XP-good state only when a touchdown itself is explicit.
                 agg["td_xp_good"] += 1
         elif state["field_goal"]:
             agg["field_goals"] += 1
@@ -182,8 +185,10 @@ def build_nfl_v2h_game_event_rows(
     output: list[dict[str, Any]] = []
     for game_id in sorted(games_seen):
         game = schedule[game_id]
-        home = str(game["home_team"]); away = str(game["away_team"])
-        home_events = aggregates.get((game_id, home)); away_events = aggregates.get((game_id, away))
+        home = str(game["home_team"])
+        away = str(game["away_team"])
+        home_events = aggregates.get((game_id, home))
+        away_events = aggregates.get((game_id, away))
         if not home_events or not away_events:
             raise ValueError(f"NFL_M2_V2H_TEAM_POSSESSIONS_MISSING:{game_id}")
         row: dict[str, Any] = {
@@ -211,29 +216,40 @@ def build_nfl_v2h_game_event_rows(
 def _validate_training_row(row: Mapping[str, Any]) -> tuple[str, str, int, dict[str, int]]:
     if str(row.get("event_contract") or "") != NFL_M2_V2H_EVENT_CONTRACT:
         raise ValueError("NFL_M2_V2H_EVENT_CONTRACT_INVALID")
-    home = str(row.get("home_team") or "").strip(); away = str(row.get("away_team") or "").strip()
+    home = str(row.get("home_team") or "").strip()
+    away = str(row.get("away_team") or "").strip()
     season = _int(row.get("season"))
     if not home or not away or home == away or season is None:
         raise ValueError("NFL_M2_V2H_TRAINING_IDENTITY_INVALID")
     counts: dict[str, int] = {}
     event_keys = ("td_xp_good", "td_xp_miss", "td_two_good", "td_two_fail", "field_goals")
     for side in ("home", "away"):
-        drives = _int(row.get(f"{side}_drives")); other = _int(row.get(f"{side}_other_no_score")); safety = _int(row.get(f"{side}_safeties"))
+        drives = _int(row.get(f"{side}_drives"))
+        other = _int(row.get(f"{side}_other_no_score"))
+        safety = _int(row.get(f"{side}_safeties"))
         if None in (drives, other, safety):
             raise ValueError("NFL_M2_V2H_EVENT_COUNT_MISSING")
         subtotal = int(other)
-        counts[f"{side}_drives"] = int(drives); counts[f"{side}_other_no_score"] = int(other); counts[f"{side}_safeties"] = int(safety)
+        counts[f"{side}_drives"] = int(drives)
+        counts[f"{side}_other_no_score"] = int(other)
+        counts[f"{side}_safeties"] = int(safety)
         for key in event_keys:
             value = _int(row.get(f"{side}_{key}"))
             if value is None or value < 0:
                 raise ValueError("NFL_M2_V2H_EVENT_COUNT_MISSING")
-            counts[f"{side}_{key}"] = value; subtotal += value
+            counts[f"{side}_{key}"] = value
+            subtotal += value
         if int(drives) <= 0 or int(other) < 0 or int(safety) < 0 or subtotal != int(drives):
             raise ValueError("NFL_M2_V2H_EVENT_COUNT_INVALID")
     return home, away, season, counts
 
 
-def fit_nfl_m2_v2h_candidate(rows: Iterable[Mapping[str, Any]], *, prior_drives: float = 48.0, max_events_per_type: int = 9) -> NFLM2V2HCandidateModel:
+def fit_nfl_m2_v2h_candidate(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    prior_drives: float = 48.0,
+    max_events_per_type: int = 9,
+) -> NFLM2V2HCandidateModel:
     data = [dict(row) for row in rows]
     if len(data) < 2:
         raise ValueError("NFL_M2_V2H_TRAINING_ROWS_INSUFFICIENT")
@@ -243,27 +259,60 @@ def fit_nfl_m2_v2h_candidate(rows: Iterable[Mapping[str, Any]], *, prior_drives:
     totals = {"games": 0, "drives": 0, **{key: 0 for key in keys}}
     mutable: dict[str, dict[str, int]] = {}
     seasons: set[int] = set()
-    blank = lambda: {"games": 0, "drives": 0, "faced": 0, **{key: 0 for key in keys}, **{f"{key}_allowed": 0 for key in keys}}
+
+    def blank() -> dict[str, int]:
+        return {
+            "games": 0,
+            "drives": 0,
+            "faced": 0,
+            **{key: 0 for key in keys},
+            **{f"{key}_allowed": 0 for key in keys},
+        }
+
     for row in data:
-        home, away, season, counts = _validate_training_row(row); seasons.add(season); totals["games"] += 2
+        home, away, season, counts = _validate_training_row(row)
+        seasons.add(season)
+        totals["games"] += 2
         for side, team, opponent in (("home", home, away), ("away", away, home)):
-            drives = counts[f"{side}_drives"]; totals["drives"] += drives
-            own = mutable.setdefault(team, blank()); opp = mutable.setdefault(opponent, blank())
-            own["games"] += 1; own["drives"] += drives; opp["faced"] += drives
+            drives = counts[f"{side}_drives"]
+            totals["drives"] += drives
+            own = mutable.setdefault(team, blank())
+            opp = mutable.setdefault(opponent, blank())
+            own["games"] += 1
+            own["drives"] += drives
+            opp["faced"] += drives
             for key in keys:
-                source = "safeties" if key == "safety" else key
+                if key == "field_goal":
+                    source = "field_goals"
+                elif key == "safety":
+                    source = "safeties"
+                else:
+                    source = key
                 value = counts[f"{side}_{source}"]
-                own[key] += value; opp[f"{key}_allowed"] += value; totals[key] += value
+                own[key] += value
+                opp[f"{key}_allowed"] += value
+                totals[key] += value
+
     if totals["drives"] <= 0:
         raise ValueError("NFL_M2_V2H_LEAGUE_STATE_EMPTY")
     league_rates = {key: totals[key] / float(totals["drives"]) for key in keys}
-    states = {}
+    states: dict[str, NFLV2HTeamState] = {}
     for team, value in sorted(mutable.items()):
         states[team] = NFLV2HTeamState(
-            games=value["games"], drives=value["drives"], td_xp_good=value["td_xp_good"], td_xp_miss=value["td_xp_miss"],
-            td_two_good=value["td_two_good"], td_two_fail=value["td_two_fail"], field_goals=value["field_goal"], safeties=value["safety"],
-            drives_faced=value["faced"], td_xp_good_allowed=value["td_xp_good_allowed"], td_xp_miss_allowed=value["td_xp_miss_allowed"],
-            td_two_good_allowed=value["td_two_good_allowed"], td_two_fail_allowed=value["td_two_fail_allowed"], field_goals_allowed=value["field_goal_allowed"],
+            games=value["games"],
+            drives=value["drives"],
+            td_xp_good=value["td_xp_good"],
+            td_xp_miss=value["td_xp_miss"],
+            td_two_good=value["td_two_good"],
+            td_two_fail=value["td_two_fail"],
+            field_goals=value["field_goal"],
+            safeties=value["safety"],
+            drives_faced=value["faced"],
+            td_xp_good_allowed=value["td_xp_good_allowed"],
+            td_xp_miss_allowed=value["td_xp_miss_allowed"],
+            td_two_good_allowed=value["td_two_good_allowed"],
+            td_two_fail_allowed=value["td_two_fail_allowed"],
+            field_goals_allowed=value["field_goal_allowed"],
             safeties_allowed=value["safety_allowed"],
         )
     return NFLM2V2HCandidateModel(
@@ -291,8 +340,13 @@ def _poisson(lam: float, maximum: int) -> list[float]:
     return [value / total for value in values]
 
 
-def _event_projection(model: NFLM2V2HCandidateModel, offense: str, defense: str) -> tuple[float, dict[str, float]]:
-    off = model.team_state.get(offense); deff = model.team_state.get(defense)
+def _event_projection(
+    model: NFLM2V2HCandidateModel,
+    offense: str,
+    defense: str,
+) -> tuple[float, dict[str, float]]:
+    off = model.team_state.get(offense)
+    deff = model.team_state.get(defense)
     if off is None or deff is None:
         raise ValueError(f"NFL_M2_V2H_TEAM_STATE_MISSING:{offense}:{defense}")
     off_drives = off.drives / float(off.games) if off.games else model.league_drives_per_team_game
@@ -301,14 +355,19 @@ def _event_projection(model: NFLM2V2HCandidateModel, offense: str, defense: str)
     rates: dict[str, float] = {}
     attr = {"field_goal": "field_goals", "safety": "safeties"}
     for key, league in model.league_event_rates.items():
-        own_name = attr.get(key, key); allow_name = f"{own_name}_allowed"
+        own_name = attr.get(key, key)
+        allow_name = f"{own_name}_allowed"
         own = _rate(getattr(off, own_name), off.drives, league, model.prior_drives)
         allowed = _rate(getattr(deff, allow_name), deff.drives_faced, league, model.prior_drives)
         rates[key] = _clamp(sqrt(own * allowed), 0.80 if key.startswith("td_") else 0.50)
     return drives, rates
 
 
-def _team_score_distribution(model: NFLM2V2HCandidateModel, offense: str, defense: str) -> dict[int, float]:
+def _team_score_distribution(
+    model: NFLM2V2HCandidateModel,
+    offense: str,
+    defense: str,
+) -> dict[int, float]:
     drives, rates = _event_projection(model, offense, defense)
     score_pmf = {0: 1.0}
     for key, points in _EVENT_POINTS.items():
@@ -323,17 +382,30 @@ def _team_score_distribution(model: NFLM2V2HCandidateModel, offense: str, defens
     return {score: probability / total for score, probability in sorted(score_pmf.items())}
 
 
-def derive_nfl_m2_v2h_score_distribution(model: NFLM2V2HCandidateModel, row: Mapping[str, Any]) -> tuple[dict[str, float | int], ...]:
+def derive_nfl_m2_v2h_score_distribution(
+    model: NFLM2V2HCandidateModel,
+    row: Mapping[str, Any],
+) -> tuple[dict[str, float | int], ...]:
     if model.model_id != NFL_M2_V2H_CANDIDATE_MODEL_ID or model.distribution_contract != NFL_M2_V2H_DISTRIBUTION_CONTRACT:
         raise ValueError("NFL_M2_V2H_MODEL_IDENTITY_INVALID")
-    home = str(row.get("home_team") or "").strip(); away = str(row.get("away_team") or "").strip()
+    home = str(row.get("home_team") or "").strip()
+    away = str(row.get("away_team") or "").strip()
     if not home or not away or home == away:
         raise ValueError("NFL_M2_V2H_PREDICTION_IDENTITY_INVALID")
     _ = tuple(field for field in _MARKET_FIELDS if field in row)
-    home_scores = _team_score_distribution(model, home, away); away_scores = _team_score_distribution(model, away, home)
-    distribution = tuple({
-        "home_score": int(h), "away_score": int(a), "margin": int(h - a), "total": int(h + a), "weight": float(hp * ap)
-    } for h, hp in home_scores.items() for a, ap in away_scores.items())
+    home_scores = _team_score_distribution(model, home, away)
+    away_scores = _team_score_distribution(model, away, home)
+    distribution = tuple(
+        {
+            "home_score": int(home_score),
+            "away_score": int(away_score),
+            "margin": int(home_score - away_score),
+            "total": int(home_score + away_score),
+            "weight": float(home_prob * away_prob),
+        }
+        for home_score, home_prob in home_scores.items()
+        for away_score, away_prob in away_scores.items()
+    )
     if abs(sum(float(item["weight"]) for item in distribution) - 1.0) > 1e-10:
         raise ValueError("NFL_M2_V2H_WEIGHT_CONSERVATION_FAILED")
     return distribution
