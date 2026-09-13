@@ -27,11 +27,15 @@ def adapt_drive_rows(rows: Iterable[Mapping]) -> list[DriveRow]:
         identity=(game,drive_id)
         if identity in seen: raise ValueError("duplicate raw drive identity")
         seen.add(identity)
+        # start_yard is a required upstream-normalized coordinate: yards from
+        # the offense's own goal line, 1..99, increasing toward the opponent end zone.
+        # Raw provider yard-line fields are intentionally not guessed here.
         yard=r.get("start_yard")
-        if yard is None: yard=r.get("drive_start_yard_line")
         if yard is None: raise ValueError("raw drive missing normalized start_yard")
+        yard=float(yard)
+        if not 1.0 <= yard <= 99.0: raise ValueError("normalized start_yard outside 1..99")
         result=r.get("drive_result") if r.get("drive_result") is not None else r.get("result")
         outcome=classify_drive_result(str(result or ""), defensive_or_special_teams_td=bool(r.get("def_st_td",False)))
-        out.append(DriveRow(game,kickoff,offense,float(yard),outcome))
+        out.append(DriveRow(game,kickoff,offense,yard,outcome))
     if not out: raise ValueError("no drive rows adapted")
     return out
