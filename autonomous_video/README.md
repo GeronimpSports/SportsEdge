@@ -17,10 +17,19 @@ This is the first executable backbone for the project.
 - rejects one-frame scene cuts as snap candidates by requiring sustained motion
 - chooses wide/end-zone/broadcast cameras from the analysis intent
 - can render a multi-angle proof with programmatic telestration and an optional narration track
+- can identify the quarterback from formation structure and team color
+- can keep moving telestration attached using visual tracking plus detector-based re-identification
+- hides tracking graphics when identity confidence is insufficient instead of circling the wrong player
 
 ## Multi-angle proof result
 
 The Oregon sample proof used separate wide and end-zone clips of the same play. The snap detector found a 5.2-second offset with 0.788 confidence, then rendered a wide → end-zone → wide sequence with overlays and narration. Sample footage itself is intentionally not stored in this repository.
+
+## Player-aware telestration proof
+
+The Oregon end-zone sample automatically identifies the quarterback from the offensive formation, tracks him frame-to-frame, and re-identifies him after traffic causes ordinary trackers to switch identities. A rendered 3.8-second proof kept the moving circle/arrow attached to the actual quarterback for 108 frames and deliberately hid the marker for 7 uncertain frames.
+
+The first two simpler approaches were rejected during visual QA because they jumped to Colorado defender #92 during a collision. The current hybrid tracker uses team-color validation, motion continuity, periodic person detection, and confidence-gated hiding/reacquisition.
 
 ## Run the deterministic pipeline proof
 
@@ -44,6 +53,17 @@ python scripts/render_multiview_proof.py \
   --output /tmp/proof.mp4
 ```
 
+## Run the player-tracking proof
+
+Requires FFmpeg, NumPy, `opencv-contrib-python-headless`, `ultralytics`, and a compatible person-detection model. Model weights and sample footage are intentionally not committed.
+
+```bash
+python scripts/render_player_tracking_proof.py \
+  --video /path/to/end_zone.mp4 \
+  --snap 3.5 \
+  --output /tmp/player_track.mp4
+```
+
 ## Production integration order
 
 1. CFBD/fallback final-game polling + full play ingestion
@@ -53,6 +73,7 @@ python scripts/render_multiview_proof.py \
 5. evidence-bound script generator
 6. footage ingestion + per-play multi-angle synchronization
 7. broadcast/All-22/end-zone camera direction from analysis intent
-8. player-aware telestration and production voice provider
-9. rendered-video QA and repair loops
-10. one-click YouTube publication
+8. generalize player-aware telestration beyond quarterback role
+9. production voice provider and richer analytics graphics
+10. rendered-video QA and repair loops
+11. one-click YouTube publication
