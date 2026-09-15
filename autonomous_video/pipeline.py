@@ -6,8 +6,10 @@ import uuid
 from typing import Any
 
 from .analytics import build_game_analytics
+from .analysis_agents import build_baseline_claims, reconcile_claims
 from .models import GameRecord, JobRecord, JobState
 from .schema import build_evidence, normalize_play
+from .script_generator import build_evidence_bound_script
 from .state_machine import transition
 from .store import JsonJobStore
 
@@ -82,7 +84,20 @@ class PostgamePipeline:
                     )
                     for raw in job.artifacts["game_data"]["plays"]
                 ]
-                job.artifacts["analytics"] = build_game_analytics(normalized)
+                analytics = build_game_analytics(normalized)
+                job.artifacts["analytics"] = analytics
+                evidence_index = job.artifacts["game_data"]["evidence_index"]
+                claims = build_baseline_claims(
+                    plays=normalized,
+                    evidence_index=evidence_index,
+                    analytics=analytics,
+                )
+                valid_evidence_ids = {str(item["evidence_id"]) for item in evidence_index}
+                job.artifacts["claims"] = [claim.to_dict() for claim in claims]
+                job.artifacts["claim_reconciliation"] = reconcile_claims(
+                    claims,
+                    valid_evidence_ids=valid_evidence_ids,
+                )
                 job.artifacts["analysis_manifest"] = self._build_analysis_manifest(job)
                 transition(job, JobState.ANALYSIS_READY)
 
@@ -90,6 +105,9 @@ class PostgamePipeline:
                 self._record_attempt(job, "script")
                 transition(job, JobState.SCRIPTING)
                 self.store.save(job)
+                job.artifacts["script_draft"] = build_evidence_bound_script(
+                    job.artifacts["claim_reconciliation"]
+                )
                 job.artifacts["script_manifest"] = self._build_script_manifest(job)
                 transition(job, JobState.SCRIPT_READY)
 
@@ -174,10 +192,20 @@ class PostgamePipeline:
         }
 
     def _run_qa(self, job: JobRecord) -> dict[str, Any]:
-        required = ["game_data", "analytics", "analysis_manifest", "script_manifest", "media_manifest", "render_manifest"]
+        required = ["game_data", "analytics", "claims", "claim_reconciliation", "analysis_manifest", "script_draft", "script_manifest", "media_manifest", "render_manifest"]
         failures = [f"missing {name}" for name in required if name not in job.artifacts]
         if job.artifacts.get("media_manifest", {}).get("rights_gate_required") is not True:
             failures.append("rights gate missing")
+        valid_evidence = {
+            str(item["evidence_id"])
+            for item in job.artifacts.get("game_data", {}).get("evidence_index", [])
+        }
+        for segment in job.artifacts.get("script_draft", {}).get("segments", []):
+            evidence_ids = segment.get("evidence_ids") or []
+            if not evidence_ids:
+                failures.append(f"script segment {segment.get('segment_id')} has no evidence")
+            elif any(eid not in valid_evidence for eid in evidence_ids):
+                failures.append(f"script segment {segment.get('segment_id')} references missing evidence")
         return {
             "pass": not failures,
             "failures": failures,

@@ -141,3 +141,23 @@ def test_espn_provider_detects_final_and_maps_plays_without_key(monkeypatch):
     assert data["play_count"] == 1
     assert data["plays"][0]["offense"] == "Oklahoma Sooners"
     assert data["plays"][0]["defense"] == "Michigan Wolverines"
+
+
+def test_claim_reconciliation_and_script_are_evidence_bound(tmp_path):
+    provider = FixtureProvider(FIXTURE)
+    pipeline = PostgamePipeline(JsonJobStore(tmp_path), provider)
+    job = pipeline.scan_for_final_games()[0]
+    pipeline.run_until_blocked(job)
+
+    reconciliation = job.artifacts["claim_reconciliation"]
+    assert reconciliation["approved_count"] >= 1
+    valid = {item["evidence_id"] for item in job.artifacts["game_data"]["evidence_index"]}
+    for claim in reconciliation["approved"]:
+        assert claim["evidence_ids"]
+        assert set(claim["evidence_ids"]).issubset(valid)
+
+    script = job.artifacts["script_draft"]
+    assert script["segment_count"] == reconciliation["approved_count"]
+    for segment in script["segments"]:
+        assert segment["evidence_ids"]
+        assert set(segment["evidence_ids"]).issubset(valid)
