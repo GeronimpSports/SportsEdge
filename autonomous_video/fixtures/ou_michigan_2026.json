@@ -23,7 +23,9 @@
       "defense": "Michigan",
       "down": 1,
       "distance": 10,
-      "play_text": "Lloyd Avant rush middle for 8 yards."
+      "play_text": "Lloyd Avant rush middle for 8 yards.",
+      "yards_gained": 8,
+      "play_type": "Rush"
     },
     {
       "game_id": "ou-michigan-2026-09-12",
@@ -33,7 +35,9 @@
       "defense": "Oklahoma",
       "down": null,
       "distance": null,
-      "play_text": "Bryce Underwood 38-yard touchdown run."
+      "play_text": "Bryce Underwood 38-yard touchdown run.",
+      "yards_gained": 38,
+      "play_type": "Rush"
     },
     {
       "game_id": "ou-michigan-2026-09-12",
@@ -43,7 +47,9 @@
       "defense": "Michigan",
       "down": null,
       "distance": null,
-      "play_text": "Mackenzie Alleyne 22-yard touchdown reception from John Mateer."
+      "play_text": "Mackenzie Alleyne 22-yard touchdown reception from John Mateer.",
+      "yards_gained": 22,
+      "play_type": "Pass Reception"
     },
     {
       "game_id": "ou-michigan-2026-09-12",
@@ -53,7 +59,9 @@
       "defense": "Oklahoma",
       "down": null,
       "distance": null,
-      "play_text": "Jordan Marshall 1-yard touchdown run."
+      "play_text": "Jordan Marshall 1-yard touchdown run.",
+      "yards_gained": 1,
+      "play_type": "Rush"
     }
   ]
 }

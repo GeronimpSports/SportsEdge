@@ -5,13 +5,20 @@ import json
 import uuid
 from typing import Any
 
-from .models import JobRecord, JobState
+from .analytics import build_game_analytics
+from .models import GameRecord, JobRecord, JobState
+from .schema import build_evidence, normalize_play
 from .state_machine import transition
 from .store import JsonJobStore
 
 
 class PostgamePipeline:
-    """V0 autonomous pipeline with durable contracts and no paid API spend."""
+    """V0 autonomous pipeline.
+
+    Real paid/compute-heavy services are not called yet. Each stage writes a
+    durable artifact contract so later providers can be plugged in without
+    redesigning orchestration.
+    """
 
     def __init__(self, store: JsonJobStore, game_provider: Any, data_provider: Any | None = None):
         self.store = store
@@ -52,6 +59,13 @@ class PostgamePipeline:
                 data = self.data_provider.ingest_game(job.game)
                 if not data.get("play_count"):
                     raise RuntimeError("ingestion produced zero plays")
+                normalized = [
+                    normalize_play(raw, fallback_game_id=job.game.game_id, source=str(data.get("source", "unknown")))
+                    for raw in data["plays"]
+                ]
+                evidence = [build_evidence(play) for play in normalized]
+                data["normalized_plays"] = [play.to_dict() for play in normalized]
+                data["evidence_index"] = [item.to_dict() for item in evidence]
                 data["fingerprint"] = self._fingerprint(data)
                 job.artifacts["game_data"] = data
                 transition(job, JobState.DATA_READY)
@@ -60,6 +74,15 @@ class PostgamePipeline:
                 self._record_attempt(job, "analysis")
                 transition(job, JobState.ANALYZING)
                 self.store.save(job)
+                normalized = [
+                    normalize_play(
+                        raw,
+                        fallback_game_id=job.game.game_id,
+                        source=str(job.artifacts["game_data"].get("source", "unknown")),
+                    )
+                    for raw in job.artifacts["game_data"]["plays"]
+                ]
+                job.artifacts["analytics"] = build_game_analytics(normalized)
                 job.artifacts["analysis_manifest"] = self._build_analysis_manifest(job)
                 transition(job, JobState.ANALYSIS_READY)
 
@@ -151,12 +174,12 @@ class PostgamePipeline:
         }
 
     def _run_qa(self, job: JobRecord) -> dict[str, Any]:
-        required = ["game_data", "analysis_manifest", "script_manifest", "media_manifest", "render_manifest"]
+        required = ["game_data", "analytics", "analysis_manifest", "script_manifest", "media_manifest", "render_manifest"]
         failures = [f"missing {name}" for name in required if name not in job.artifacts]
         if job.artifacts.get("media_manifest", {}).get("rights_gate_required") is not True:
             failures.append("rights gate missing")
         return {
             "pass": not failures,
             "failures": failures,
-            "note": "V0 validates orchestration/contracts only; rendered-video QA comes after footage/render integration.",
+            "note": "V0 validates orchestration/contracts only; rendered-video QA is added after footage/render integration.",
         }
