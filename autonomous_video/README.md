@@ -20,6 +20,8 @@ This is the first executable backbone for the project.
 - can identify the quarterback from formation structure and team color
 - can keep moving telestration attached using visual tracking plus detector-based re-identification
 - hides tracking graphics when identity confidence is insufficient instead of circling the wrong player
+- can infer OL, eligible receivers/backs, DL, LB, safety, and DB groups from pre-snap formation geometry
+- can select a role such as `ELIGIBLE`, `LB`, or `SAFETY` and hand that target to the moving-telestration tracker
 
 ## Multi-angle proof result
 
@@ -30,6 +32,21 @@ The Oregon sample proof used separate wide and end-zone clips of the same play. 
 The Oregon end-zone sample automatically identifies the quarterback from the offensive formation, tracks him frame-to-frame, and re-identifies him after traffic causes ordinary trackers to switch identities. A rendered 3.8-second proof kept the moving circle/arrow attached to the actual quarterback for 108 frames and deliberately hid the marker for 7 uncertain frames.
 
 The first two simpler approaches were rejected during visual QA because they jumped to Colorado defender #92 during a collision. The current hybrid tracker uses team-color validation, motion continuity, periodic person detection, and confidence-gated hiding/reacquisition.
+
+## Formation-role proof
+
+Using the synchronized Oregon wide angle roughly 1.2 seconds before the snap, the formation classifier automatically produced:
+
+- 5 offensive linemen
+- 5 eligible offensive players
+- 4 defensive linemen
+- 2 linebackers
+- 2 safeties
+- 5 other defensive backs
+
+The classifier first finds the five-man offensive-line geometry, uses that line as the line-of-scrimmage coordinate system, then classifies defenders by depth and width relative to it.
+
+A four-second receiver-role render tracked its selected eligible receiver for 121/121 frames with no hide. Defensive role tracking is confidence-gated: linebacker and safety markers intentionally disappear during ambiguous traffic rather than jumping to the wrong team/player. Exact defender identity through pileups remains a next-stage problem rather than being treated as solved.
 
 ## Run the deterministic pipeline proof
 
@@ -73,7 +90,8 @@ python scripts/render_player_tracking_proof.py \
 5. evidence-bound script generator
 6. footage ingestion + per-play multi-angle synchronization
 7. broadcast/All-22/end-zone camera direction from analysis intent
-8. generalize player-aware telestration beyond quarterback role
-9. production voice provider and richer analytics graphics
-10. rendered-video QA and repair loops
-11. one-click YouTube publication
+8. formation-role recognition + role-aware telestration
+9. jersey/player identity resolution across camera angles and occlusions
+10. production voice provider and richer analytics graphics
+11. rendered-video QA and repair loops
+12. one-click YouTube publication
