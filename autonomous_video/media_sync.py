@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 
 import numpy as np
@@ -36,24 +36,33 @@ def _motion_series(path: str | Path, fps: int = 10, width: int = 160, height: in
 
 
 def detect_snap(path: str | Path, fps: int = 10) -> tuple[float, float]:
-    """Find sustained football motion while rejecting single-frame scene cuts."""
+    """Self-calibrating snap detector.
+
+    Learns each clip's own motion scale so distant wide cameras are not held to
+    the same absolute-motion threshold as tight/end-zone cameras. A snap must
+    produce sustained motion, which rejects one-frame camera cuts.
+    """
     motion = _motion_series(path, fps=fps)
     pre = max(8, int(1.2 * fps))
     post = max(10, int(1.5 * fps))
+    p25 = float(np.percentile(motion, 25))
+    p90 = float(np.percentile(motion, 90))
+    dynamic_floor = max(0.008, min(0.028, p25 + 0.18 * (p90 - p25)))
     candidates = []
     for i in range(pre, len(motion) - post):
         before = float(np.mean(motion[i-pre:i]))
         after = motion[i:i+post]
         after_mean = float(np.mean(after))
-        ratio = after_mean / max(before, 0.003)
-        sustained = float(np.mean(after > max(before * 1.8, 0.025)))
-        if after_mean >= 0.04 and ratio >= 1.8 and sustained >= 0.6:
+        active = max(dynamic_floor, before * 2.2)
+        sustained = float(np.mean(after > active))
+        ratio = after_mean / max(before, 0.0025)
+        if after_mean >= dynamic_floor * 1.35 and ratio >= 1.65 and sustained >= 0.52:
             score = ratio * sustained * after_mean
             candidates.append((i, score, ratio, sustained))
     if not candidates:
         raise RuntimeError(f"could not find a sustained-motion snap in {path}")
     i, score, ratio, sustained = candidates[0]
-    confidence = min(0.99, 0.45 + min(ratio, 6.0) * 0.06 + sustained * 0.2)
+    confidence = min(0.99, 0.42 + min(ratio, 6.0) * 0.065 + sustained * 0.22)
     return round((i + 1) / fps, 2), round(confidence, 3)
 
 
