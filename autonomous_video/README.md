@@ -48,6 +48,18 @@ The classifier first finds the five-man offensive-line geometry, uses that line 
 
 A four-second receiver-role render tracked its selected eligible receiver for 121/121 frames with no hide. Defensive role tracking is confidence-gated: linebacker and safety markers intentionally disappear during ambiguous traffic rather than jumping to the wrong team/player. Exact defender identity through pileups remains a next-stage problem rather than being treated as solved.
 
+## Game-agnostic temporal formation proof
+
+The first formation-role proof was Oregon-specific. The new tight/end-zone pipeline removes that assumption. It self-detects the snap, samples the pre-snap window over time, fuses repeated player detections, learns visual uniform clusters from that play, and requires football structure (five collinear blockers, a backfield candidate behind them, and an opposing front) before validating the offensive line.
+
+The same unchanged pipeline was visually QA'd on five unrelated free samples: Oregon, Clemson, Notre Dame, UCF, and a separate RPO film set. With no team names, no configured uniform colors, and no manual snap timestamps, all five returned exactly five offensive linemen. Auto-detected snap times were 3.4s, 4.3s, 3.1s, 2.3s, and 1.8s respectively.
+
+This is **not** a claim of universal formation recognition yet. The five-game result validates the game-agnostic OL/line-of-scrimmage core. Backfield players remain `CANDIDATES`; exact QB/RB/WR and defensive-role identities still require cross-angle reconciliation and additional validation. The system must return `UNRESOLVED` instead of forcing a role when the evidence is weak.
+
+```bash
+python scripts/analyze_tight_formation.py /path/to/tight_angle.mp4
+```
+
 ## Run the deterministic pipeline proof
 
 ```bash
@@ -90,8 +102,10 @@ python scripts/render_player_tracking_proof.py \
 5. evidence-bound script generator
 6. footage ingestion + per-play multi-angle synchronization
 7. broadcast/All-22/end-zone camera direction from analysis intent
-8. formation-role recognition + role-aware telestration
-9. jersey/player identity resolution across camera angles and occlusions
-10. production voice provider and richer analytics graphics
-11. rendered-video QA and repair loops
-12. one-click YouTube publication
+8. game-agnostic tight-angle OL/LOS anchor
+9. cross-angle reconciliation: transfer offense/defense identity to the synchronized wide angle
+10. validate QB/RB/eligible receivers plus DL/LB/secondary roles across both angles
+11. jersey/player identity resolution across camera angles and occlusions
+12. production voice provider and richer analytics graphics
+13. rendered-video QA and repair loops
+14. one-click YouTube publication
