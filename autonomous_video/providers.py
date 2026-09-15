@@ -94,3 +94,130 @@ class CfbdProvider:
         )
         plays = [p for p in payload if str(p.get("gameId")) == str(game.game_id)]
         return {"source": "cfbd", "game_id": game.game_id, "plays": plays, "play_count": len(plays)}
+
+
+class EspnPublicProvider:
+    """Zero-key ESPN public-data fallback for low-intervention operation.
+
+    ESPN does not document these public site endpoints as a supported developer
+    API, so production should retain a second source for verification.
+    """
+
+    SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard"
+    SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary"
+
+    def __init__(self, *, date: str, team: str | None = None, groups: int = 80):
+        self.date = date.replace("-", "")
+        self.team = team
+        self.groups = groups
+
+    def _get_url(self, base: str, params: dict[str, Any]) -> Any:
+        query = urlencode({k: v for k, v in params.items() if v is not None})
+        req = Request(
+            f"{base}?{query}",
+            headers={"Accept": "application/json", "User-Agent": "SportsEdgePostgameVideo/0.2"},
+        )
+        with urlopen(req, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    @staticmethod
+    def _team_name(competitor: dict[str, Any]) -> str:
+        team = competitor.get("team") or {}
+        return str(team.get("displayName") or team.get("shortDisplayName") or team.get("name") or team.get("abbreviation"))
+
+    def list_games(self) -> list[GameRecord]:
+        payload = self._get_url(
+            self.SCOREBOARD_URL,
+            {"dates": self.date, "groups": self.groups, "limit": 1000},
+        )
+        games: list[GameRecord] = []
+        for event in payload.get("events", []):
+            competitions = event.get("competitions") or []
+            if not competitions:
+                continue
+            competition = competitions[0]
+            competitors = competition.get("competitors") or []
+            home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+            away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+            if not home or not away:
+                continue
+
+            home_team = self._team_name(home)
+            away_team = self._team_name(away)
+            if self.team:
+                wanted = self.team.casefold()
+                if wanted not in home_team.casefold() and wanted not in away_team.casefold():
+                    continue
+
+            status_type = ((event.get("status") or {}).get("type") or {})
+            completed = bool(status_type.get("completed"))
+            status_name = str(status_type.get("name") or "")
+            status = "FINAL" if completed or status_name == "STATUS_FINAL" else status_name or "SCHEDULED"
+
+            season = event.get("season") or {}
+            week = (payload.get("week") or {}).get("number") or 0
+            games.append(
+                GameRecord(
+                    game_id=str(event["id"]),
+                    season=int(season.get("year") or self.date[:4]),
+                    week=int(week),
+                    home_team=home_team,
+                    away_team=away_team,
+                    status=status,
+                    home_score=int(home["score"]) if str(home.get("score", "")).isdigit() else None,
+                    away_score=int(away["score"]) if str(away.get("score", "")).isdigit() else None,
+                    start_time=event.get("date"),
+                    source="espn_public",
+                )
+            )
+        return games
+
+    def ingest_game(self, game: GameRecord) -> dict[str, Any]:
+        payload = self._get_url(self.SUMMARY_URL, {"event": game.game_id})
+        header_competitions = ((payload.get("header") or {}).get("competitions") or [])
+        competitors = header_competitions[0].get("competitors", []) if header_competitions else []
+        names_by_id = {}
+        for c in competitors:
+            team = c.get("team") or {}
+            if team.get("id") is not None:
+                names_by_id[str(team["id"])] = str(
+                    team.get("displayName") or team.get("shortDisplayName") or team.get("abbreviation")
+                )
+
+        mapped: list[dict[str, Any]] = []
+        for raw in payload.get("plays", []) or []:
+            team_obj = raw.get("team") or {}
+            offense = names_by_id.get(str(team_obj.get("id"))) if team_obj.get("id") is not None else None
+            if offense is None:
+                offense = team_obj.get("displayName") or team_obj.get("abbreviation")
+            defense = None
+            if offense:
+                defense = game.away_team if offense == game.home_team else game.home_team
+
+            start = raw.get("start") or {}
+            period = raw.get("period") or {}
+            clock = raw.get("clock") or {}
+            play_type = raw.get("type") or {}
+            mapped.append(
+                {
+                    "game_id": game.game_id,
+                    "id": raw.get("id"),
+                    "period": period.get("number") if isinstance(period, dict) else period,
+                    "clock": clock.get("displayValue") if isinstance(clock, dict) else clock,
+                    "offense": offense,
+                    "defense": defense,
+                    "down": start.get("down"),
+                    "distance": start.get("distance"),
+                    "yards_gained": raw.get("statYardage"),
+                    "play_type": play_type.get("text") if isinstance(play_type, dict) else play_type,
+                    "play_text": raw.get("text"),
+                }
+            )
+
+        return {
+            "source": "espn_public",
+            "source_warning": "Public ESPN site endpoint; verify important facts against a second source.",
+            "game_id": game.game_id,
+            "plays": mapped,
+            "play_count": len(mapped),
+        }

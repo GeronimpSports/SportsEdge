@@ -4,7 +4,7 @@ import pytest
 
 from autonomous_video.models import JobState
 from autonomous_video.pipeline import PostgamePipeline
-from autonomous_video.providers import FixtureProvider
+from autonomous_video.providers import EspnPublicProvider, FixtureProvider
 from autonomous_video.state_machine import InvalidTransition, transition
 from autonomous_video.store import JsonJobStore
 from autonomous_video.schema import build_evidence, normalize_play
@@ -94,3 +94,50 @@ def test_pipeline_builds_play_index_and_analytics(tmp_path):
     analytics = job.artifacts["analytics"]
     assert analytics["plays_indexed"] == 4
     assert set(analytics["teams"]) == {"Michigan", "Oklahoma"}
+
+
+def test_espn_provider_detects_final_and_maps_plays_without_key(monkeypatch):
+    provider = EspnPublicProvider(date="20260912", team="Oklahoma")
+    scoreboard = {
+        "week": {"number": 2},
+        "events": [{
+            "id": "401856679",
+            "date": "2026-09-12T16:14Z",
+            "season": {"year": 2026},
+            "status": {"type": {"name": "STATUS_FINAL", "completed": True}},
+            "competitions": [{"competitors": [
+                {"homeAway": "home", "score": "17", "team": {"id": "130", "displayName": "Michigan Wolverines"}},
+                {"homeAway": "away", "score": "10", "team": {"id": "201", "displayName": "Oklahoma Sooners"}},
+            ]}],
+        }],
+    }
+    summary = {
+        "header": {"competitions": [{"competitors": [
+            {"team": {"id": "130", "displayName": "Michigan Wolverines"}},
+            {"team": {"id": "201", "displayName": "Oklahoma Sooners"}},
+        ]}]},
+        "plays": [{
+            "id": "play-1",
+            "period": {"number": 1},
+            "clock": {"displayValue": "14:57"},
+            "team": {"id": "201"},
+            "start": {"down": 1, "distance": 10},
+            "statYardage": 8,
+            "type": {"text": "Rush"},
+            "text": "Rush for 8 yards",
+        }],
+    }
+
+    def fake_get(base, params):
+        return scoreboard if "scoreboard" in base else summary
+
+    monkeypatch.setattr(provider, "_get_url", fake_get)
+    games = provider.list_games()
+    assert len(games) == 1
+    assert games[0].is_final
+    assert games[0].home_score == 17
+    assert games[0].away_score == 10
+    data = provider.ingest_game(games[0])
+    assert data["play_count"] == 1
+    assert data["plays"][0]["offense"] == "Oklahoma Sooners"
+    assert data["plays"][0]["defense"] == "Michigan Wolverines"
