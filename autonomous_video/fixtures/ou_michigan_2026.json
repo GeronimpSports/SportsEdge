@@ -1,0 +1,59 @@
+{
+  "source": "official_boxscore_fixture",
+  "games": [
+    {
+      "game_id": "ou-michigan-2026-09-12",
+      "season": 2026,
+      "week": 2,
+      "home_team": "Michigan",
+      "away_team": "Oklahoma",
+      "status": "FINAL",
+      "home_score": 17,
+      "away_score": 10,
+      "start_time": "2026-09-12T12:14:00-04:00",
+      "source": "fixture"
+    }
+  ],
+  "plays": [
+    {
+      "game_id": "ou-michigan-2026-09-12",
+      "period": 1,
+      "clock": "14:57",
+      "offense": "Oklahoma",
+      "defense": "Michigan",
+      "down": 1,
+      "distance": 10,
+      "play_text": "Lloyd Avant rush middle for 8 yards."
+    },
+    {
+      "game_id": "ou-michigan-2026-09-12",
+      "period": 1,
+      "clock": "00:47",
+      "offense": "Michigan",
+      "defense": "Oklahoma",
+      "down": null,
+      "distance": null,
+      "play_text": "Bryce Underwood 38-yard touchdown run."
+    },
+    {
+      "game_id": "ou-michigan-2026-09-12",
+      "period": 3,
+      "clock": "08:30",
+      "offense": "Oklahoma",
+      "defense": "Michigan",
+      "down": null,
+      "distance": null,
+      "play_text": "Mackenzie Alleyne 22-yard touchdown reception from John Mateer."
+    },
+    {
+      "game_id": "ou-michigan-2026-09-12",
+      "period": 4,
+      "clock": "07:53",
+      "offense": "Michigan",
+      "defense": "Oklahoma",
+      "down": null,
+      "distance": null,
+      "play_text": "Jordan Marshall 1-yard touchdown run."
+    }
+  ]
+}
